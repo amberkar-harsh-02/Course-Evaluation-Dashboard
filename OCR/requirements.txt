@@ -1,0 +1,11 @@
+# OCR / text-extraction server (OCR/main.py, OCR/train_model.py)
+fastapi>=0.141
+uvicorn>=0.52
+python-multipart>=0.0.32
+python-docx>=1.2
+pymupdf>=1.28
+pandas>=3.0
+openpyxl>=3.1
+joblib>=1.5
+scikit-learn>=1.9
+wordninja>=2.0
