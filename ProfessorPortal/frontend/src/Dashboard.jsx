@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -42,6 +42,123 @@ const CustomSelect = ({ value, onChange, options, minWidth = "160px" }) => {
   );
 }
 
+const OTHER_LABEL = "None of the above / Other";
+const UI_OTHER_LABEL = "Uncategorized/Unrated";
+const MIN_RELIABLE_CATEGORY_COMMENTS = 5;
+const LOW_CONFIDENCE_THRESHOLD = 0.35;
+
+// Pipeline writes null scores as "", so only real integers count as scored
+const toScore = (value) => {
+  if (value === "" || value === null || value === undefined) return null;
+  const score = Number(value);
+  return Number.isInteger(score) ? score : null;
+};
+
+// Same as Python round(value, 2): half-to-even on the exact binary value, so scores match NLP/main.py
+const roundTo2 = (value) => {
+  const [whole, frac] = Math.abs(value).toFixed(60).split('.');
+  let cents = Number(whole) * 100 + Number(frac.slice(0, 2));
+  const rest = frac.slice(2);
+  const half = '5' + '0'.repeat(rest.length - 1);
+  if (rest > half || (rest === half && cents % 2 === 1)) cents += 1;
+  return Math.sign(value) * cents / 100;
+};
+
+const meanScore = (scores) => {
+  if (scores.length === 0) return null;
+  return roundTo2(scores.reduce((sum, s) => sum + s, 0) / scores.length);
+};
+
+// Mirrors reliability_for_topic in NLP/main.py
+const reliabilityForTopic = (comments) => {
+  const scored = comments.filter(c => toScore(c.score) !== null);
+  const modelErrorCount = comments.filter(c => c.scoring_status === "model_error").length;
+  const lowConfidenceCount = scored.filter(c => typeof c.confidence === 'number' && c.confidence < LOW_CONFIDENCE_THRESHOLD).length;
+  if (scored.length === 0) return "unscored";
+  if (modelErrorCount) return "needs_review";
+  if (scored.length < MIN_RELIABLE_CATEGORY_COMMENTS) return "low_sample";
+  if (lowConfidenceCount) return "mixed_confidence";
+  return "reliable";
+};
+
+// Recomputes topic averages and the overall score the same way analysis_pipeline does, skipping ignored comments
+const recalculateReport = (rawReport) => {
+  const perFeedbackScores = {};
+  const categories = (rawReport.categories || []).map(cat => {
+    if (cat.topic === OTHER_LABEL || cat.topic === UI_OTHER_LABEL) return cat;
+    const activeComments = (cat.comments || []).filter(c => c.ignored !== true);
+    const scores = [];
+    activeComments.forEach(c => {
+      const score = toScore(c.score);
+      if (score === null) return;
+      scores.push(score);
+      if (!perFeedbackScores[c.feedback]) perFeedbackScores[c.feedback] = [];
+      perFeedbackScores[c.feedback].push(score);
+    });
+    return {
+      ...cat,
+      average_score: meanScore(scores),
+      scored_comment_count: scores.length,
+      reliability: reliabilityForTopic(activeComments),
+    };
+  });
+
+  const categoryByTopic = Object.fromEntries(categories.map(cat => [cat.topic, cat]));
+  const categoryScores = (rawReport.category_scores || []).map(cs => {
+    const cat = categoryByTopic[cs.category];
+    return cat ? { ...cs, average_score: cat.average_score, comment_count: cat.comment_count } : cs;
+  });
+
+  const perCommentMeans = Object.values(perFeedbackScores).map(scores => scores.reduce((sum, s) => sum + s, 0) / scores.length);
+
+  return {
+    ...rawReport,
+    overall_score: meanScore(perCommentMeans),
+    category_scores: categoryScores,
+    categories,
+  };
+};
+
+const normalizeReport = (rawData) => {
+  if (!rawData.categories) return rawData;
+
+  const commentsMap = {};
+  rawData.categories.forEach(cat => {
+    if (cat.comments) {
+      cat.comments.forEach(comment => {
+        const text = comment.feedback;
+        const rating = (comment.score === "" || comment.score === null) ? 0 : Number(comment.score);
+        if (!commentsMap[text]) {
+          commentsMap[text] = { text, rating, topics: [], topicRatings: {}, ignoredTopics: [] };
+        }
+        if (!commentsMap[text].topics.includes(cat.topic)) {
+          commentsMap[text].topics.push(cat.topic);
+        }
+        commentsMap[text].topicRatings[cat.topic] = rating;
+        if (comment.ignored === true && !commentsMap[text].ignoredTopics.includes(cat.topic)) {
+          commentsMap[text].ignoredTopics.push(cat.topic);
+        }
+      });
+    }
+  });
+
+  return {
+    course_id: rawData.course_id || "Imported Report",
+    overall_score: rawData.overall_score || 0,
+    category_scores: rawData.category_scores.map(c => ({
+      category: c.category,
+      score: c.average_score || 0,
+      comment_count: c.comment_count || 0
+    })),
+    analyzed_comments: Object.values(commentsMap),
+    topic_summaries: rawData.topic_summaries || [],
+    raw_categories: rawData.categories || [],
+    raw_report: rawData
+  };
+};
+
+const isIgnoredFor = (comment, topic) => Boolean(topic && comment.ignoredTopics?.includes(topic));
+
 function Dashboard() {
   const { 
     isDarkMode, setIsDarkMode, 
@@ -64,6 +181,15 @@ function Dashboard() {
   const [sortOrder, setSortOrder] = useState('desc'); 
   const [topicFilter, setTopicFilter] = useState('all');
 
+  const [isIgnoreMode, setIsIgnoreMode] = useState(false);
+  const [pendingIgnored, setPendingIgnored] = useState(new Set());
+
+  // Leaving or switching the topic page discards unsaved ignore selections
+  useEffect(() => {
+    setIsIgnoreMode(false);
+    setPendingIgnored(new Set());
+  }, [activeTopic, currentView]);
+
   const getToastStyle = () => ({
     background: isDarkMode ? '#3f3f46' : '#ffffff',
     color: isDarkMode ? '#ffffff' : '#1f2937',
@@ -84,41 +210,11 @@ function Dashboard() {
         rawString = rawString.replace(/None of the above\/other/gi, "Uncategorized/Unrated");
         
         const rawData = JSON.parse(rawString);
-        let normalizedData = rawData;
-
-        if (rawData.categories) {
-          const commentsMap = {};
-          rawData.categories.forEach(cat => {
-            if (cat.comments) {
-              cat.comments.forEach(comment => {
-                const text = comment.feedback;
-                const rating = (comment.score === "" || comment.score === null) ? 0 : Number(comment.score);
-                if (!commentsMap[text]) {
-                  commentsMap[text] = { text, rating, topics: [], topicRatings: {} };
-                }
-                if (!commentsMap[text].topics.includes(cat.topic)) {
-                  commentsMap[text].topics.push(cat.topic);
-                }
-                commentsMap[text].topicRatings[cat.topic] = rating;
-              });
-            }
-          });
-
-          normalizedData = {
-            course_id: rawData.course_id || "Imported Report",
-            overall_score: rawData.overall_score || 0,
-            category_scores: rawData.category_scores.map(c => ({
-              category: c.category,
-              score: c.average_score || 0,
-              comment_count: c.comment_count || 0
-            })),
-            analyzed_comments: Object.values(commentsMap),
-            topic_summaries: rawData.topic_summaries || [],
-            raw_categories: rawData.categories || []
-          };
-        }
+        const normalizedData = normalizeReport(rawData);
 
         setAnalysisData(normalizedData);
+        setIsIgnoreMode(false);
+        setPendingIgnored(new Set());
         setCurrentView('dashboard');
         setIsModalOpen(false);
         setSelectedFile(null);
@@ -137,6 +233,78 @@ function Dashboard() {
   };
 
   const handleUpload = () => processFile(selectedFile);
+
+  const startIgnoreMode = () => {
+    const rawCat = analysisData?.raw_report?.categories?.find(c => c.topic === activeTopic);
+    const alreadyIgnored = (rawCat?.comments || []).filter(c => c.ignored === true).map(c => c.feedback);
+    setPendingIgnored(new Set(alreadyIgnored));
+    setIsIgnoreMode(true);
+  };
+
+  const cancelIgnoreMode = () => {
+    setIsIgnoreMode(false);
+    setPendingIgnored(new Set());
+  };
+
+  const togglePendingIgnored = (text) => {
+    setPendingIgnored(prev => {
+      const next = new Set(prev);
+      if (next.has(text)) next.delete(text);
+      else next.add(text);
+      return next;
+    });
+  };
+
+  const saveIgnoredComments = () => {
+    const rawReport = analysisData?.raw_report;
+    if (!rawReport) return;
+
+    const updatedReport = {
+      ...rawReport,
+      categories: rawReport.categories.map(cat => {
+        if (cat.topic !== activeTopic) return cat;
+        return {
+          ...cat,
+          comments: (cat.comments || []).map(c => {
+            if (pendingIgnored.has(c.feedback)) return { ...c, ignored: true };
+            const rest = { ...c };
+            delete rest.ignored;
+            return rest;
+          })
+        };
+      })
+    };
+
+    const recalculated = recalculateReport(updatedReport);
+    const formatScore = (value) => (value === null || value === undefined) ? 'N/A' : Number(value).toFixed(2);
+    const oldTopicScore = rawReport.categories.find(c => c.topic === activeTopic)?.average_score;
+    const newTopicScore = recalculated.categories.find(c => c.topic === activeTopic)?.average_score;
+
+    setAnalysisData(normalizeReport(recalculated));
+    setIsIgnoreMode(false);
+    setPendingIgnored(new Set());
+    toast.success(
+      `Saved. Topic score ${formatScore(oldTopicScore)} → ${formatScore(newTopicScore)}, Overall ${formatScore(rawReport.overall_score)} → ${formatScore(recalculated.overall_score)}`,
+      { style: getToastStyle(), duration: 5000 }
+    );
+  };
+
+  const handleExportJson = () => {
+    const rawReport = analysisData?.raw_report;
+    if (!rawReport) return;
+    // Restore the pipeline's original label that was renamed on import
+    const dataStr = JSON.stringify(rawReport, null, 2).replace(/Uncategorized\/Unrated/g, OTHER_LABEL);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${analysisData.course_id}_COMBINED_REPORT.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success('JSON Exported!', { style: getToastStyle() });
+  };
 
   const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = (e) => { e.preventDefault(); setIsDragging(false); };
@@ -314,6 +482,11 @@ function Dashboard() {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
             )}
           </button>
+          {analysisData?.raw_report && (
+            <button onClick={handleExportJson} className="bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 text-gray-700 dark:text-zinc-200 hover:bg-gray-50 dark:hover:bg-zinc-700 px-4 py-2 rounded-lg font-medium shadow-sm transition-all text-sm">
+              Export JSON
+            </button>
+          )}
           <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 dark:hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-all text-sm">
             + Load JSON file
           </button>
@@ -338,12 +511,13 @@ function Dashboard() {
               const topicSummaryData = analysisData.topic_summaries?.find(s => s.topic === activeTopic);
               const topicCat = analysisData.category_scores?.find(c => c.category === activeTopic);
               const rawCat = analysisData.raw_categories?.find(c => c.topic === activeTopic);
-              let stats = { assigned: null, scored: null, sentimentObj: null };
+              let stats = { assigned: null, scored: null, ignored: 0, sentimentObj: null };
 
               if (rawCat && rawCat.comments) {
                 stats.assigned = rawCat.comments.length;
                 
-                const validScoredComments = rawCat.comments.filter(c => c.score !== "" && c.score !== null && Number(c.score) !== 0);
+                const validScoredComments = rawCat.comments.filter(c => c.ignored !== true && c.score !== "" && c.score !== null && Number(c.score) !== 0);
+                stats.ignored = rawCat.comments.filter(c => c.ignored === true).length;
                 stats.scored = validScoredComments.length;
 
                 stats.sentimentObj = {
@@ -382,6 +556,12 @@ function Dashboard() {
                           <div className="flex flex-col">
                             <span className="text-gray-500 dark:text-zinc-500 text-[10px] font-bold uppercase tracking-widest mb-1">Scored Comments</span>
                             <span className="font-bold text-lg">{stats.scored}</span>
+                          </div>
+                        )}
+                        {stats.ignored > 0 && (
+                          <div className="flex flex-col">
+                            <span className="text-gray-500 dark:text-zinc-500 text-[10px] font-bold uppercase tracking-widest mb-1">Ignored Comments</span>
+                            <span className="font-bold text-lg">{stats.ignored}</span>
                           </div>
                         )}
                       </div>
@@ -432,28 +612,58 @@ function Dashboard() {
                   </div>
                   <CustomSelect value={scoreFilter} onChange={setScoreFilter} options={scoreOptions} minWidth="160px" />
                   <CustomSelect value={sortOrder} onChange={setSortOrder} options={sortOptions} minWidth="160px" />
+                  {isIgnoreMode ? (
+                    <>
+                      <span className="self-center text-sm font-semibold text-gray-500 dark:text-zinc-400">{pendingIgnored.size} selected</span>
+                      <button onClick={cancelIgnoreMode} className="px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 dark:text-zinc-300 bg-gray-100 dark:bg-zinc-900 border border-gray-300 dark:border-zinc-700 hover:bg-gray-200 dark:hover:bg-zinc-700 transition-all shadow-sm">
+                        Cancel
+                      </button>
+                      <button onClick={saveIgnoredComments} className="px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 dark:hover:bg-blue-500 transition-all shadow-sm">
+                        Save
+                      </button>
+                    </>
+                  ) : (
+                    analysisData.raw_report && (
+                      <button onClick={startIgnoreMode} className="px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-zinc-300 bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-all shadow-sm">
+                        Ignore Comments
+                      </button>
+                    )
+                  )}
                 </div>
               </div>
-              
+
               <motion.div layout className="flex-1 overflow-auto pr-2 space-y-4 max-h-[500px]">
                 <AnimatePresence mode="popLayout">
                   {getFilteredAndSortedComments(analysisData.analyzed_comments, activeTopic).length === 0 ? (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center text-gray-500 dark:text-zinc-500 py-10 font-medium">No comments match your current filter.</motion.div>
                   ) : (
                     getFilteredAndSortedComments(analysisData.analyzed_comments, activeTopic).map((comment, idx) => (
-                      <motion.div 
+                      <motion.div
                         layout initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.1 } }} transition={{ duration: 0.2 }} key={`${comment.text}-${idx}`}
-                        className="relative bg-gray-50 dark:bg-zinc-800/40 border border-gray-200 dark:border-zinc-700/60 rounded-xl p-6 hover:shadow-md transition-all flex gap-5 items-start overflow-hidden"
+                        onClick={isIgnoreMode ? () => togglePendingIgnored(comment.text) : undefined}
+                        className={`relative bg-gray-50 dark:bg-zinc-800/40 border border-gray-200 dark:border-zinc-700/60 rounded-xl p-6 hover:shadow-md transition-all flex gap-5 items-start overflow-hidden ${isIgnoreMode ? 'cursor-pointer select-none' : ''} ${isIgnoreMode && pendingIgnored.has(comment.text) ? 'ring-2 ring-blue-500' : ''} ${isIgnoredFor(comment, activeTopic) ? 'opacity-60' : ''}`}
                         style={{ borderLeft: `4px solid ${getScoreColor(comment.rating)}` }}
                       >
                         <svg className="absolute top-4 right-4 w-12 h-12 text-gray-200 dark:text-zinc-700/30 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
                         </svg>
 
+                        {isIgnoreMode && (
+                          <input
+                            type="checkbox"
+                            checked={pendingIgnored.has(comment.text)}
+                            onChange={() => togglePendingIgnored(comment.text)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="mt-4 w-5 h-5 shrink-0 accent-blue-600 cursor-pointer relative z-10"
+                          />
+                        )}
                         <div className={`flex items-center justify-center font-bold w-12 h-12 rounded-full shrink-0 shadow-sm text-lg ${getBadgeColorClass(comment.rating)} text-white relative z-10`}>{comment.rating === 0 ? "-" : comment.rating.toFixed(1)}</div>
                         <div className="pt-1 flex-1 relative z-10">
                           <p className="leading-relaxed font-medium mb-4 pr-8">{comment.text}</p>
                           <div className="flex flex-wrap gap-2 items-center">
+                            {isIgnoredFor(comment, activeTopic) && (
+                              <span className="bg-gray-200 dark:bg-zinc-700 text-gray-600 dark:text-zinc-300 text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md font-bold shadow-sm">Ignored</span>
+                            )}
                             {comment.topics && comment.topics.map((t, i) => (
                               <span key={i} className="bg-white dark:bg-zinc-900/80 text-blue-600 dark:text-blue-400 text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md font-bold border border-gray-200 dark:border-zinc-700/50 shadow-sm">
                                 {t}
@@ -571,7 +781,7 @@ function Dashboard() {
                     getFilteredAndSortedComments().map((comment, idx) => (
                       <motion.div 
                         layout initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.1 } }} transition={{ duration: 0.2 }} key={`${comment.text}-${idx}`}
-                        className="relative bg-gray-50 dark:bg-zinc-800/40 border border-gray-200 dark:border-zinc-700/60 rounded-xl p-6 hover:shadow-md transition-all flex gap-5 items-start overflow-hidden"
+                        className={`relative bg-gray-50 dark:bg-zinc-800/40 border border-gray-200 dark:border-zinc-700/60 rounded-xl p-6 hover:shadow-md transition-all flex gap-5 items-start overflow-hidden ${isIgnoredFor(comment, topicFilter !== 'all' ? topicFilter : null) ? 'opacity-60' : ''}`}
                         style={{ borderLeft: `4px solid ${getScoreColor(comment.rating)}` }}
                       >
                         <svg className="absolute top-4 right-4 w-12 h-12 text-gray-200 dark:text-zinc-700/30 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
@@ -584,8 +794,11 @@ function Dashboard() {
                         <div className="pt-1 flex-1 relative z-10">
                           <p className="leading-relaxed font-medium mb-4 pr-8">{comment.text}</p>
                           <div className="flex flex-wrap gap-2 items-center">
+                            {isIgnoredFor(comment, topicFilter !== 'all' ? topicFilter : null) && (
+                              <span className="bg-gray-200 dark:bg-zinc-700 text-gray-600 dark:text-zinc-300 text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md font-bold shadow-sm">Ignored</span>
+                            )}
                             {comment.topics && comment.topics.map((t, i) => (
-                              <span key={i} className="bg-white dark:bg-zinc-900/80 text-blue-600 dark:text-blue-400 text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md font-bold border border-gray-200 dark:border-zinc-700/50 shadow-sm">{t}</span>
+                              <span key={i} className="bg-white dark:bg-zinc-900/80 text-blue-600 dark:text-blue-400 text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md font-bold border border-gray-200 dark:border-zinc-700/50 shadow-sm">{t}{isIgnoredFor(comment, t) ? ' · Ignored' : ''}</span>
                             ))}
                           </div>
                         </div>
@@ -678,12 +891,13 @@ function Dashboard() {
                 const topicSummaryData = analysisData.topic_summaries?.find(s => s.topic === selectedTopicModal);
                 const topicCat = analysisData.category_scores?.find(c => c.category === selectedTopicModal);
                 const rawCat = analysisData.raw_categories?.find(c => c.topic === selectedTopicModal);
-                let stats = { assigned: null, scored: null, sentimentObj: null };
+                let stats = { assigned: null, scored: null, ignored: 0, sentimentObj: null };
 
                 if (rawCat && rawCat.comments) {
                   stats.assigned = rawCat.comments.length;
 
-                  const validScoredComments = rawCat.comments.filter(c => c.score !== "" && c.score !== null && Number(c.score) !== 0);
+                  const validScoredComments = rawCat.comments.filter(c => c.ignored !== true && c.score !== "" && c.score !== null && Number(c.score) !== 0);
+                stats.ignored = rawCat.comments.filter(c => c.ignored === true).length;
                   stats.scored = validScoredComments.length;
 
                   stats.sentimentObj = {
@@ -724,6 +938,12 @@ function Dashboard() {
                               <span className="font-bold text-lg">{stats.scored}</span>
                             </div>
                           )}
+                          {stats.ignored > 0 && (
+                            <div className="flex flex-col">
+                              <span className="text-gray-500 dark:text-zinc-500 text-[10px] font-bold uppercase tracking-widest mb-1">Ignored Comments</span>
+                              <span className="font-bold text-lg">{stats.ignored}</span>
+                            </div>
+                          )}
                         </div>
                         {stats.sentimentObj && (
                           <div className="pt-4 border-t border-gray-200 dark:border-zinc-800/80">
@@ -758,7 +978,7 @@ function Dashboard() {
                   getFilteredAndSortedComments(analysisData.analyzed_comments, selectedTopicModal, true).map((comment, idx) => (
                     <motion.div 
                       layout initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.1 } }} transition={{ duration: 0.2 }} key={`${comment.text}-${idx}`}
-                      className="relative bg-gray-50 dark:bg-zinc-800/40 border border-gray-200 dark:border-zinc-700/60 rounded-xl p-6 hover:shadow-md transition-all flex gap-5 items-start overflow-hidden"
+                      className={`relative bg-gray-50 dark:bg-zinc-800/40 border border-gray-200 dark:border-zinc-700/60 rounded-xl p-6 hover:shadow-md transition-all flex gap-5 items-start overflow-hidden ${isIgnoredFor(comment, selectedTopicModal) ? 'opacity-60' : ''}`}
                       style={{ borderLeft: `4px solid ${getScoreColor(comment.rating)}` }}
                     >
                       <svg className="absolute top-4 right-4 w-12 h-12 text-gray-200 dark:text-zinc-700/30 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
@@ -769,6 +989,9 @@ function Dashboard() {
                       <div className="pt-1 flex-1 relative z-10">
                         <p className="leading-relaxed font-medium mb-4 pr-8">{comment.text}</p>
                         <div className="flex flex-wrap gap-2 items-center">
+                          {isIgnoredFor(comment, selectedTopicModal) && (
+                            <span className="bg-gray-200 dark:bg-zinc-700 text-gray-600 dark:text-zinc-300 text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md font-bold shadow-sm">Ignored</span>
+                          )}
                           {comment.topics && comment.topics.map((t, i) => (
                             <span key={i} className="bg-white dark:bg-zinc-900/80 text-blue-600 dark:text-blue-400 text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md font-bold border border-gray-200 dark:border-zinc-700/50 shadow-sm">
                               {t}
