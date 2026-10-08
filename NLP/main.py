@@ -1,6 +1,7 @@
 from __future__ import annotations
 import csv
 import json
+import logging
 import re
 import time
 import os
@@ -10,16 +11,16 @@ from pathlib import Path
 from typing import Any
 import requests
 from data import SCORING_RUBRIC, TOPIC_DEFS, TOPIC_KEYS
-from dotenv import load_dotenv
+import settings
+import llm_cache
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Callable
 
-load_dotenv()
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parents[0]
 OTHER = "None of the above / Other"
 TOPICS = list(TOPIC_KEYS) + [OTHER]
-
-OLLAMA_URL = "http://10.9.144.10:8001/api/generate"
-MODEL = "qwen35b:latest"
 
 CLASSIFICATION_BASELINE_PATH = BASE_DIR / "HUMAN_CATEGORIZED_OUTPUT.csv"
 SENTIMENT_BASELINE_PATH = BASE_DIR / "HUMAN_SENTIMENT_BASELINE.csv"
@@ -46,21 +47,6 @@ RETRIEVAL_STOPWORDS = {
     "did", "do", "for", "from", "had", "has", "have", "he", "her", "his", "i", 
     "in", "instructor", "is", "it", "me", "my", "of", "on", "or", "professor", 
     "she", "students", "that", "the", "this", "to", "very", "was", "were", "with",
-}
-
-TOPIC_EVIDENCE_PATTERNS = {
-    "Course organization and structure": [r"\borganiz(?:e|ed|ation|ing)\b", r"\bstructure(?:d)?\b", r"\bschedul(?:e|ed|ing)\b", r"\bsequenc(?:e|ed|ing)\b", r"\bnavigation\b", r"\boriginally specified\b"],
-    "Pace": [r"\bpace(?:d)?\b", r"\bfast\b", r"\bslow\b", r"\brushed?\b", r"\btoo quickly\b", r"\bkeep up\b", r"\btime constraint\b", r"\bnot enough time\b", r"\bmore time\b", r"\bdo not have much time\b", r"\bbefore the final\b"],
-    "Workload": [r"\bworkload\b", r"\bamount of work\b", r"\btoo much work\b", r"\bmanageable workload\b", r"\btime burden\b", r"\bconsume(?:d)? too much\b", r"\boverwhel(?:m|med|ming)\b", r"\bpacked.*full\b", r"\btoo many.*assignments\b", r"\bcan't keep up\b", r"\bburden\b", r"\btoo much to handle\b"],
-    "Student engagement and participation": [r"\bengag(?:e|ed|ing|ement)\b", r"\bengaging lecturer\b", r"\bengaging lectures?\b", r"\bparticipat(?:e|ed|ion)\b", r"\bdiscussion\b", r"\bencourag(?:e|ed|es|ing) discussion\b", r"\bask(?:ing)? questions\b", r"\bgo over any question\b", r"\bquestions? .* lecture\b", r"\bfeel free to ask\b", r"\binteractive\b", r"\bclicker questions?\b", r"\bclickers?\b", r"\bworksheets?\b", r"\boffice hours\b"],
-    "Clarity of explanations": [r"\bclear(?:ly)?\b", r"\bexplain(?:s|ed|ing|ation|ations)?\b", r"\bunderstand(?:able|ing)?\b", r"\bunderstood\b", r"\bfollow along\b", r"\bmanageable\b", r"\bdigestible\b", r"\bstraightforward\b", r"\bbreak(?:ing)? down\b", r"\beasy to understand\b", r"\bmade .* understandable\b", r"\bmade .* doable\b", r"\btaught really well\b"],
-    "Effectiveness of assignments": [r"\bassignments?\b", r"\bhomeworks?\b", r"\bproblem sets?\b", r"\bpractice problems?\b", r"\bexample problems?\b", r"\bworksheets?\b", r"\bclicker questions?\b", r"\bclickers? were helpful\b", r"\bgave me an idea of what exam questions\b"],
-    "Classroom atmosphere": [r"\batmosphere\b", r"\benvironment\b", r"\bwelcom(?:e|ing)\b", r"\bsupportive\b", r"\bcomfortable\b", r"\bdemotivating\b", r"\bstressful environment\b", r"\benergy\b", r"\bvibe\b", r"\bintimidating\b", r"\brelaxed\b", r"\btone of the class\b"],
-    "Instructor's communication and availability": [r"\bcommunicat(?:e|ed|ion|ive)\b", r"\brespond(?:s|ed|ing)?\b", r"\bemails?\b", r"\bdiscussion posts?\b", r"\boffice hours\b", r"\bavailable\b", r"\bapproachable\b", r"\bset aside time\b", r"\bmeet with\b", r"\btakes? the time\b", r"\bgo over any question\b", r"\bup to date\b", r"\breminders?\b", r"\baccommodations?\b"],
-    "Inclusivity and sense of belonging": [r"\binclus(?:ive|ion|ivity)\b", r"\bbelonging\b", r"\bwelcom(?:e|ed|ing)\b", r"\baccessible\b", r"\blearning styles?\b", r"\brespect(?:ful|ed)?\b", r"\bcatering\b"],
-    "Assessment": [r"\bassessments?\b", r"\bexams?\b", r"\btests?\b", r"\bquizzes?\b", r"\bmidterms?\b", r"\bfinal\b", r"\bexam questions?\b"],
-    "Grading and feedback": [r"\bgrad(?:e|ed|es|ing)\b", r"\bgrading system\b", r"\bpartial credit\b", r"\bfeedback\b", r"\bredemption\b", r"\bgrade policy\b"],
-    "Learning resources and materials": [r"\bresources?\b", r"\bmaterials?\b", r"\bnotes?\b", r"\bslides?\b", r"\bpower\s*points?\b", r"\bbruin\s*cast\b", r"\brecordings?\b", r"\breview sessions?\b", r"\bposted online\b", r"\bccle\b", r"\blecture notes?\b", r"\bstudy materials?\b", r"\bflashcards?\b", r"\bpractice exams?\b"],
 }
 
 def normalize_comment(comment: str) -> str:
@@ -252,64 +238,95 @@ def extract_json_object(text: str) -> dict[str, Any]:
     return json.loads(text[json_start:json_end])
 
 
-def call_llm(prompt: str, model_choice: str = "local", temperature: float = 0.1, timeout: int = 90, max_retries: int = LLM_MAX_RETRIES) -> str:
+def call_llm(prompt: str, model_choice: str = "local", temperature: float = 0.1, timeout: int = 90, max_retries: int = LLM_MAX_RETRIES, schema: dict[str, Any] | None = None, json_mode: bool = True) -> str:
+    """Send one prompt to the chosen model and return its text.
+
+    With `schema`, the provider is asked to enforce that JSON schema (OpenAI structured outputs,
+    Anthropic forced tool call, Ollama `format`). Returned text is then always the JSON object.
+    `json_mode=False` asks for plain prose (used for topic summaries).
+    Answers are cached in SQLite (settings.LLM_CACHE), keyed by provider, model and the full request.
+    """
+    key = None
+    if settings.LLM_CACHE:
+        key = llm_cache.cache_key(model_choice, settings.model_id_for(model_choice), prompt, schema, json_mode, temperature)
+        cached = llm_cache.get(settings.LLM_CACHE_PATH, key)
+        if cached is not None:
+            return cached
+    answer = _request_llm(prompt, model_choice, temperature, timeout, max_retries, schema, json_mode)
+    if key is not None and answer:
+        llm_cache.put(settings.LLM_CACHE_PATH, key, answer)
+    return answer
+
+
+def _request_llm(prompt: str, model_choice: str, temperature: float, timeout: int, max_retries: int, schema: dict[str, Any] | None, json_mode: bool) -> str:
     last_error: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
             if model_choice == "openai":
                 api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-                
-                openai_timeout = max(timeout, 180)
-                
+                body: dict[str, Any] = {
+                    "model": settings.OPENAI_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "reasoning_effort": "low",
+                }
+                if schema is not None:
+                    body["response_format"] = {"type": "json_schema", "json_schema": {"name": "comment_analysis", "strict": True, "schema": schema}}
                 response = requests.post(
-                    "https://api.openai.com/v1/chat/completions",
+                    settings.OPENAI_URL,
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                    json={
-                        "model": "gpt-5.6-terra",
-                        "messages": [{"role": "user", "content": prompt}],
-                        "reasoning_effort": "low", 
-                    },
-                    timeout=openai_timeout,
+                    json=body,
+                    timeout=max(timeout, 180),
                 )
                 response.raise_for_status()
                 return response.json()["choices"][0]["message"]["content"]
-                
+
             elif model_choice == "anthropic":
                 api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+                body = {
+                    "model": settings.ANTHROPIC_MODEL,
+                    "max_tokens": 2048,
+                    "temperature": temperature,
+                }
+                if schema is not None:
+                    body["messages"] = [{"role": "user", "content": prompt}]
+                    body["tools"] = [{"name": "record_analysis", "description": "Record the analysis of the comment.", "input_schema": schema}]
+                    body["tool_choice"] = {"type": "tool", "name": "record_analysis"}
+                else:
+                    suffix = "\n\nRespond strictly with JSON format." if json_mode else ""
+                    body["messages"] = [{"role": "user", "content": prompt + suffix}]
                 response = requests.post(
-                    "https://api.anthropic.com/v1/messages",
+                    settings.ANTHROPIC_URL,
                     headers={
                         "x-api-key": api_key,
                         "anthropic-version": "2023-06-01",
                         "content-type": "application/json"
                     },
-                    json={
-                        "model": "claude-sonnet-4-6", # <-- Sonnet 4.6
-                        "messages": [{"role": "user", "content": prompt + "\n\nRespond strictly with JSON format."}],
-                        "max_tokens": 1024,
-                        "temperature": temperature,
-                    },
+                    json=body,
                     timeout=timeout,
                 )
                 response.raise_for_status()
-                return response.json()["content"][0]["text"]
-                
+                content = response.json()["content"]
+                tool_use = next((block for block in content if block.get("type") == "tool_use"), None)
+                if tool_use is not None:
+                    return json.dumps(tool_use["input"])
+                return next((block["text"] for block in content if block.get("type") == "text"), "")
+
             else:
-                # Default Local Mac Studio Ollama Connection
-                response = requests.post(
-                    OLLAMA_URL,
-                    json={
-                        "model": MODEL,
-                        "prompt": prompt,
-                        "stream": False,
-                        "format": "json",
-                        "temperature": temperature,
-                    },
-                    timeout=timeout,
-                )
+                # Local Ollama (lab Mac Studio). Sampling settings go under "options".
+                body = {
+                    "model": settings.OLLAMA_MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": temperature},
+                }
+                if schema is not None:
+                    body["format"] = schema
+                elif json_mode:
+                    body["format"] = "json"
+                response = requests.post(settings.OLLAMA_URL, json=body, timeout=timeout)
                 response.raise_for_status()
                 return response.json().get("response", "")
-                
+
         except requests.RequestException as exc:
             last_error = exc
             if attempt < max_retries:
@@ -328,58 +345,6 @@ def format_rubric(topic: str) -> str:
     if not isinstance(rubric, dict):
         return ""
     return "\n".join(f"{score}: {description}" for score, description in sorted(rubric.items()))
-
-def has_topic_evidence(comment: str, topic: str) -> bool:
-    if topic == OTHER:
-        return True
-    patterns = TOPIC_EVIDENCE_PATTERNS.get(topic, [])
-    text = comment.casefold()
-    return any(re.search(pattern, text) for pattern in patterns)
-
-def evidence_quote_is_grounded(evidence_quote: str | None, comment: str) -> bool:
-    if not evidence_quote:
-        return False
-    cleaned_quote = str(evidence_quote).strip().casefold()
-    if cleaned_quote in {"", "null", "none", "n/a", "false"}:
-        return False
-    return True
-
-def looks_like_generic_only_comment(comment: str) -> bool:
-    if any(has_topic_evidence(comment, topic) for topic in TOPIC_KEYS):
-        return False
-
-    tokens = retrieval_tokens(comment)
-    if len(tokens) > 15:
-        return False
-
-    text = comment.casefold()
-    concrete_keywords = ["assign", "exam", "lecture", "class", "material", "discussion", "grade", "feedback", "office", "resource", "classroom", "pace", "workload", "assessment", "quiz", "test"]
-    has_concrete = any(kw in text for kw in concrete_keywords)
-    if not has_concrete and len(tokens) < 8:
-        return True
-
-    generic_patterns = [
-        r"\b(best|great|excellent|amazing|incredible|fantastic|good|wonderful|outstanding|awesome)\b.*\b(professor|instructor|teacher|lecturer)\b",
-        r"\b(professor|instructor|teacher|lecturer)\b.*\b(best|great|excellent|amazing|incredible|fantastic|good|wonderful|outstanding|awesome)\b",
-        r"\b(no complaints|love this class|goat)\b",
-    ]
-    return any(re.search(pattern, text) for pattern in generic_patterns)
-
-def filter_topics_by_evidence(comment: str, topics: list[str], mode: str = "soft") -> list[str]:
-    valid_topics = []
-    
-    for topic in topics:
-        if topic in TOPICS and topic not in valid_topics:
-            valid_topics.append(topic)
-
-    if not valid_topics:
-        return [OTHER]
-
-    if len(valid_topics) > 1 and OTHER in valid_topics:
-        valid_topics.remove(OTHER)
-
-    return valid_topics
-
 
 def add_high_precision_topic_hints(comment: str, topics: list[str]) -> list[str]:
     text = comment.casefold()
@@ -448,8 +413,165 @@ def parse_confidence(value: Any) -> float:
         confidence = confidence / 100
     return max(0.0, min(1.0, confidence))
 
-# 🚀 NEW: Added model_choice
-def classify_with_llama(comment: str, classification_examples: list[dict[str, Any]] | None = None, evidence_filter_mode: str = "soft", model_choice: str = "local") -> dict[str, Any]:
+def format_question_context(question: str | None) -> str:
+    if not question:
+        return ""
+    return (
+        "\n    SURVEY QUESTION THIS FEEDBACK ANSWERS (context only; judge what the feedback itself says):\n"
+        f"    \"\"\"{truncate_example_text(question, 300)}\"\"\"\n"
+    )
+
+BOUNDARY_RULES = """- Organization: structure, sequencing, logistics, layout, scheduling, time management, course design.
+    - Pace: fast/slow movement through material, rushing, keeping up, time pressure.
+    - Workload: amount of work, burden, difficulty load, too much or manageable work.
+    - Engagement: participation, discussion, questions, interactive work, activities.
+    - Clarity: explanations, lectures, examples, understanding concepts.
+    - Assignments: homework, practice tasks, worksheets, problem sets, usefulness of assigned work.
+    - Atmosphere: sense of welcoming, belonging, comfort, motivation, stress, support.
+    - Communication/availability: office hours, responsiveness, announcements, access to instructor.
+    - Inclusivity/belonging: inclusion, accessibility, respect, feeling welcome across learners.
+    - Assessment: exams, tests, quizzes, alignment, difficulty, fairness of assessment design.
+    - Grading/feedback: grades, partial credit, grading policy, feedback on work.
+    - Resources/materials: notes, slides, recordings, textbooks, review materials, posted resources."""
+
+PACE_DIRECTIONS = ["too_fast", "too_slow", "appropriate"]
+
+ANALYSIS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "topics": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "topic": {"type": "string", "enum": list(TOPIC_KEYS)},
+                    "score": {"type": ["integer", "null"]},
+                    "confidence": {"type": "number"},
+                    "evidence_quote": {"type": "string"},
+                    "reasoning": {"type": "string"},
+                    "direction": {"type": ["string", "null"], "enum": PACE_DIRECTIONS + [None]},
+                },
+                "required": ["topic", "score", "confidence", "evidence_quote", "reasoning", "direction"],
+            },
+        },
+        "general_sentiment_score": {"type": ["integer", "null"]},
+    },
+    "required": ["topics", "general_sentiment_score"],
+}
+
+def format_all_rubrics() -> str:
+    blocks = []
+    for topic in TOPIC_KEYS:
+        rubric = "\n".join(f"        {score}: {text}" for score, text in sorted(SCORING_RUBRIC.get(topic, {}).items()))
+        blocks.append(f"    - {topic}: {TOPIC_DEFS[topic]}\n{rubric}")
+    return "\n".join(blocks)
+
+def format_scored_examples(examples: list[dict[str, Any]]) -> str:
+    if not examples:
+        return "[]"
+    return json.dumps([{
+        "feedback": truncate_example_text(str(example.get("feedback", ""))),
+        "topic": example.get("topic"),
+        "human_score": example.get("score", 3),
+    } for example in examples], indent=2)
+
+def analyze_comment(comment: str, classification_examples: list[dict[str, Any]] | None = None, sentiment_examples: list[dict[str, Any]] | None = None, model_choice: str = "local", question: str | None = None) -> dict[str, Any]:
+    """One schema-enforced call that returns every topic in the comment with its rubric score."""
+    topic_examples = retrieve_similar_examples(comment, classification_examples or [], limit=RAG_CLASSIFICATION_EXAMPLE_COUNT)
+    score_examples = retrieve_similar_examples(comment, sentiment_examples or [], limit=RAG_CLASSIFICATION_EXAMPLE_COUNT + 1)
+
+    prompt = f"""You are analyzing one course-evaluation comment written by a student.
+
+    TOPICS, each with its 1-5 scoring rubric:
+{format_all_rubrics()}
+
+    BOUNDARY RULES:
+    {BOUNDARY_RULES}
+
+    SIMILAR HUMAN-CODED EXAMPLES (topics):
+    {format_classification_examples(topic_examples)}
+
+    SIMILAR HUMAN-SCORED EXAMPLES (topic, score):
+    {format_scored_examples(score_examples)}
+    Use the examples only to calibrate. Do not copy labels unless this feedback has similar concrete evidence.
+
+    TASK:
+    1. List every topic the feedback makes a SPECIFIC point about. Use the subject matter of the text.
+       - Only include a topic when the feedback names something concrete that belongs to it (office hours or emails for
+         Communication, explanations or examples for Clarity, exams for Assessment, discussions for Engagement, ...).
+       - Personality praise alone ("caring", "kind", "passionate", "wants us to succeed", "approachable", "great teacher")
+         is NOT Communication, Clarity, Engagement or Atmosphere. If that is all the feedback says, treat it as generic.
+       - When unsure whether a topic applies, leave it out.
+    2. For each topic, score it 1-5 with THAT topic's rubric, using only the part of the feedback about that topic.
+       Use null for score when the topic is only named without any opinion (e.g. "Labs", "Videos").
+    3. confidence: 0.0-1.0, how sure you are that the topic applies and the score is right.
+    4. evidence_quote: a short exact phrase from the feedback. reasoning: at most 15 words.
+    5. direction: for Pace only, "too_fast", "too_slow" or "appropriate"; null for every other topic.
+    6. If the feedback is generic (no specific topic, e.g. "Great professor!"), return an empty topics list and set
+       general_sentiment_score to 1-5 for its overall tone. Use null for neutral or irrelevant text ("N/A", "no comment").
+       When topics are listed, general_sentiment_score is null.
+    {format_question_context(question)}
+    FEEDBACK:
+    \"\"\"{comment}\"\"\"
+
+    Return ONLY a JSON object with "topics" (list of {{topic, score, confidence, evidence_quote, reasoning, direction}}) and "general_sentiment_score".
+    """
+
+    last_error: Exception | None = None
+    parsed = None
+    for _attempt in range(MODEL_TASK_MAX_RETRIES):
+        try:
+            parsed = extract_json_object(call_llm(prompt, model_choice=model_choice, schema=ANALYSIS_SCHEMA))
+            break
+        except Exception as exc:
+            last_error = exc
+    if parsed is None:
+        return {"status": "model_error", "reasoning": f"Failed to analyze with model after retries; last error: {last_error}", "topic_results": [], "general_score": None}
+
+    topic_results = []
+    seen_topics = set()
+    for entry in parsed.get("topics") or []:
+        if not isinstance(entry, dict):
+            continue
+        topic = str(entry.get("topic", "")).strip()
+        if topic not in TOPIC_KEYS or topic in seen_topics:
+            continue
+        seen_topics.add(topic)
+        score = parse_optional_score(entry.get("score"))
+        direction = entry.get("direction") if topic == "Pace" and entry.get("direction") in PACE_DIRECTIONS else None
+        evidence_quote = normalize_comment(str(entry.get("evidence_quote") or "")) or None
+        topic_results.append((topic, {
+            "topic_supported": True,
+            "sentiment": sentiment_from_score(score) if isinstance(score, int) else "neutral",
+            "score": score,
+            "confidence": parse_confidence(entry.get("confidence")),
+            "evidence_quote": evidence_quote,
+            "reasoning": str(entry.get("reasoning") or "").strip(),
+            "scoring_status": "scored",
+            "direction": direction,
+        }))
+
+    general_score = parse_optional_score(parsed.get("general_sentiment_score")) if not topic_results else None
+    return {"status": "classified", "reasoning": "", "topic_results": topic_results, "general_score": general_score}
+
+def assess_comment_two_step(comment: str, classification_examples: list[dict[str, Any]], sentiment_examples: list[dict[str, Any]], model_choice: str, question: str | None) -> dict[str, Any]:
+    """Older flow: one classification call, then one scoring call per topic. Same return shape as analyze_comment."""
+    classification = classify_comment(comment, classification_examples=classification_examples, model_choice=model_choice, question=question)
+    status = classification.get("classification_status", "classified")
+    if status == "model_error":
+        return {"status": status, "reasoning": classification.get("classification_reasoning", ""), "topic_results": [], "general_score": None}
+    topic_results = []
+    for topic in classification.get("topics", [OTHER]):
+        if topic == OTHER:
+            continue
+        scored = score_comment_topic(comment, topic, sentiment_examples=sentiment_examples, model_choice=model_choice, question=question)
+        scored.pop("is_mismatched", None)
+        topic_results.append((topic, scored))
+    return {"status": status, "reasoning": "", "topic_results": topic_results, "general_score": None}
+
+def classify_comment(comment: str, classification_examples: list[dict[str, Any]] | None = None, model_choice: str = "local", question: str | None = None) -> dict[str, Any]:
     retrieved_examples = retrieve_similar_examples(comment, classification_examples or [], limit=RAG_CLASSIFICATION_EXAMPLE_COUNT)
 
     prompt = f"""You are classifying one course-evaluation comment into instructional topics.
@@ -469,18 +591,7 @@ def classify_with_llama(comment: str, classification_examples: list[dict[str, An
     - Do not copy labels unless this feedback has similar concrete evidence.
 
     BOUNDARY RULES:
-    - Organization: structure, sequencing, logistics, layout, scheduling, time management, course design.
-    - Pace: fast/slow movement through material, rushing, keeping up, time pressure.
-    - Workload: amount of work, burden, difficulty load, too much or manageable work.
-    - Engagement: participation, discussion, questions, interactive work, activities.
-    - Clarity: explanations, lectures, examples, understanding concepts.
-    - Assignments: homework, practice tasks, worksheets, problem sets, usefulness of assigned work.
-    - Atmosphere: sense of welcoming, belonging, comfort, motivation, stress, support.
-    - Communication/availability: office hours, responsiveness, announcements, access to instructor.
-    - Inclusivity/belonging: inclusion, accessibility, respect, feeling welcome across learners.
-    - Assessment: exams, tests, quizzes, alignment, difficulty, fairness of assessment design.
-    - Grading/feedback: grades, partial credit, grading policy, feedback on work.
-    - Resources/materials: notes, slides, recordings, textbooks, review materials, posted resources.
+    {BOUNDARY_RULES}
 
     Return ONLY valid JSON in this exact shape:
     {{
@@ -490,7 +601,7 @@ def classify_with_llama(comment: str, classification_examples: list[dict[str, An
         "Topic 2": "short exact phrase from feedback"
       }}
     }}
-
+    {format_question_context(question)}
     FEEDBACK:
     \"\"\"{comment}\"\"\"
     """
@@ -527,13 +638,12 @@ def classify_with_llama(comment: str, classification_examples: list[dict[str, An
         return {"topics": [OTHER], "classification_status": "classified"}
 
     valid_topics = add_high_precision_topic_hints(comment, valid_topics)
+    if len(valid_topics) > 1 and OTHER in valid_topics:
+        valid_topics.remove(OTHER)
 
-    filtered = filter_topics_by_evidence(comment, valid_topics, mode=evidence_filter_mode)
+    return {"topics": valid_topics, "classification_status": "classified"}
 
-    return {"topics": filtered, "classification_status": "classified"}
-
-# 🚀 NEW: Added model_choice
-def sentiment_with_llama(comment: str, topic: str, sentiment_examples: list[dict[str, Any]] | None = None, model_choice: str = "local") -> dict[str, Any]:
+def score_comment_topic(comment: str, topic: str, sentiment_examples: list[dict[str, Any]] | None = None, model_choice: str = "local", question: str | None = None) -> dict[str, Any]:
     retrieved_examples = retrieve_similar_examples(comment, sentiment_examples or [], limit=RAG_SENTIMENT_EXAMPLE_COUNT, topic=topic)
     prompt = f"""You are scoring one course-evaluation comment for one topic.
 
@@ -548,7 +658,7 @@ def sentiment_with_llama(comment: str, topic: str, sentiment_examples: list[dict
 
     RETRIEVED HUMAN-SCORED EXAMPLES FOR THIS SAME TOPIC:
     {format_sentiment_examples(retrieved_examples)}
-
+    {format_question_context(question)}
     FEEDBACK:
     \"\"\"{comment}\"\"\"
 
@@ -627,39 +737,7 @@ def sentiment_with_llama(comment: str, topic: str, sentiment_examples: list[dict
     
     return result
 
-def check_topic_mismatch(reasoning: str, topic: str) -> bool:
-    text = reasoning.lower()
-    critical_patterns = [
-        r"but\s+there\s+is\s+no\s+(?:explicit\s+)?",
-        r"but\s+no\s+(?:explicit\s+)?",
-        r"(?:only\s+)?mentions?\s+.*(?:not|but\s+not)\s+",
-        r"(?:doesn't|does\s+not)\s+(?:explicitly\s+)?mention",
-        r"(?:doesn't|does\s+not)\s+(?:explicitly\s+)?discuss",
-        r"(?:doesn't|does\s+not)\s+(?:explicitly\s+)?address",
-        r"implies\s+.*but\s+(?:doesn't|does\s+not)",
-        r"mentions\s+.*but\s+(?:doesn't|does\s+not|isn't)",
-    ]
-    standard_patterns = [
-        r"does not\s+(?:explicitly\s+)?praise",
-        r"does not\s+(?:explicitly\s+)?criticize",
-        r"does not\s+(?:explicitly\s+)?relate",
-        r"no\s+(?:explicit\s+)?evidence",
-        r"not\s+(?:explicitly\s+)?specific",
-        r"unrelated",
-        r"cannot determine",
-        r"not\s+(?:directly\s+)?relevant",
-        r"tangential\s+to",
-        r"no\s+evidence\s+(?:about|of)",
-        r"comment\s+(?:doesn't|does not|couldn't|could not)\s+address",
-    ]
-    all_patterns = critical_patterns + standard_patterns
-    for pattern in all_patterns:
-        if re.search(pattern, text):
-            return True
-    return False
-
-# 🚀 NEW: Added model_choice
-def summarize_topic_with_llama(topic: str, comments: list[dict[str, Any]], average_score: float | None, model_choice: str = "local") -> str:
+def summarize_topic(topic: str, comments: list[dict[str, Any]], average_score: float | None, model_choice: str = "local") -> str:
     if not comments:
         return f"Summary of {topic}: No comments were assigned to this topic."
     if len(comments) == 1:
@@ -708,7 +786,7 @@ def summarize_topic_with_llama(topic: str, comments: list[dict[str, Any]], avera
     """
 
     try:
-        summary = call_llm(prompt, model_choice=model_choice, temperature=0.2, timeout=120).strip()
+        summary = call_llm(prompt, model_choice=model_choice, temperature=0.2, timeout=120, json_mode=False).strip()
     except Exception as exc:
         return f"{exact_prefix} Themes unavailable due to model error."
 
@@ -739,6 +817,20 @@ def build_topic_summary_prefix(topic: str, comment_count: int, scored_count: int
         prefix += f" {model_error_count} model scoring errors were excluded from averages."
     return prefix
 
+def other_entry(feedback: str, classification_status: str, scoring_status: str, reasoning: str, question: str | None = None) -> dict[str, Any]:
+    return {
+        "feedback": feedback,
+        "question": question,
+        "sentiment": None,
+        "score": None,
+        "confidence": None,
+        "classification_status": classification_status,
+        "topic_supported": None,
+        "evidence_quote": None,
+        "scoring_status": scoring_status,
+        "reasoning": reasoning,
+    }
+
 def public_comment(comment: dict[str, Any]) -> dict[str, Any]:
     return {
         "feedback": comment.get("feedback") or "",
@@ -750,15 +842,20 @@ def public_comment(comment: dict[str, Any]) -> dict[str, Any]:
         "confidence": comment.get("confidence") if comment.get("confidence") is not None else "",
         "scoring_status": comment.get("scoring_status") or "",
         "reasoning": comment.get("reasoning") or "",
+        "question": comment.get("question") or "",
+        "direction": comment.get("direction") or "",
+        "general_score": comment.get("general_score") if comment.get("general_score") is not None else "",
     }
 
 def public_category(category: dict[str, Any]) -> dict[str, Any]:
+    extra = {"direction_counts": category["direction_counts"]} if "direction_counts" in category else {}
     return {
         "topic": category["topic"],
         "average_score": category["average_score"],
         "comment_count": category["comment_count"],
         "scored_comment_count": category.get("scored_comment_count", 0),
         "reliability": category.get("reliability", ""),
+        **extra,
         "comments": [public_comment(comment) for comment in category["comments"]],
     }
 
@@ -851,6 +948,7 @@ def write_combined_csv(output: dict[str, Any], csv_path: Path) -> None:
                 "Scored Comment Count": topic_item.get("scored_comment_count", 0),
                 "Reliability": topic_item.get("reliability", ""),
                 "Feedback": "",
+                "Question": "",
                 "Classification Status": "",
                 "Topic Supported": "",
                 "Evidence Quote": "",
@@ -872,6 +970,7 @@ def write_combined_csv(output: dict[str, Any], csv_path: Path) -> None:
                 "Scored Comment Count": topic_item.get("scored_comment_count", 0),
                 "Reliability": topic_item.get("reliability", ""),
                 "Feedback": comment["feedback"],
+                "Question": comment.get("question", ""),
                 "Classification Status": comment.get("classification_status", ""),
                 "Topic Supported": comment.get("topic_supported", ""),
                 "Evidence Quote": comment.get("evidence_quote", ""),
@@ -883,22 +982,51 @@ def write_combined_csv(output: dict[str, Any], csv_path: Path) -> None:
                 "Topic Summary": topic_summary if comment_idx == 0 else "",
             })
 
-    fieldnames = ["Course ID", "Overall Score", "Topic", "Topic Average Score", "Scored Comment Count", "Reliability", "Feedback", "Classification Status", "Topic Supported", "Evidence Quote", "Sentiment", "Score", "Confidence", "Scoring Status", "Reasoning", "Topic Summary"]
+    fieldnames = ["Course ID", "Overall Score", "Topic", "Topic Average Score", "Scored Comment Count", "Reliability", "Feedback", "Question", "Classification Status", "Topic Supported", "Evidence Quote", "Sentiment", "Score", "Confidence", "Scoring Status", "Reasoning", "Topic Summary"]
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     with open(csv_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
 
-# 🚀 NEW: Added model_choice
-def analysis_pipeline(course_id: str, raw_comments: list[str], output_dir: Path | None = None, write_files: bool = True, dedupe_exact_comments: bool = True, use_rag: bool = True, evidence_filter_mode: str = "soft", model_choice: str = "local") -> dict[str, Any]:
+LIST_BULLETS = "•●○◦▪▫■□‣⁃∙·➢➤►▶✓✔�"
+
+def strip_list_bullets(text: str) -> str:
+    """Drop list bullets (exports often store them as the replacement character) and join items with "; "."""
+    text = re.sub(rf"\n[ \t]*(?:[{re.escape(LIST_BULLETS)}*]|-(?=\s))[ \t]*", "; ", text)
+    text = re.sub(rf"^[ \t]*(?:[{re.escape(LIST_BULLETS)}*]|-(?=\s))[ \t]*", "", text)
+    text = re.sub(rf"[ \t]+[{re.escape(LIST_BULLETS)}][ \t]+", "; ", text)
+    text = re.sub(r":\s*;\s*", ": ", text)
+    return re.sub(r"(;\s*)+", "; ", text).replace("�", "'")
+
+def prepare_comment_items(raw_comments: list[Any], dedupe_exact_comments: bool = True) -> tuple[list[dict[str, Any]], int]:
+    """Accept plain strings or OCR responses ({"text", "question", "non_teaching_question"})."""
+    items = []
+    seen = set()
+    duplicates = 0
+    for raw in raw_comments:
+        if isinstance(raw, dict):
+            text = normalize_comment(strip_list_bullets(str(raw.get("text") or raw.get("feedback") or "")))
+            question = normalize_comment(str(raw.get("question") or "")) or None
+            non_teaching = bool(raw.get("non_teaching_question"))
+        else:
+            text, question, non_teaching = normalize_comment(strip_list_bullets(str(raw))), None, False
+        if not text:
+            continue
+        if dedupe_exact_comments:
+            if text in seen:
+                duplicates += 1
+                continue
+            seen.add(text)
+        items.append({"text": text, "question": question, "non_teaching_question": non_teaching})
+    return items, duplicates
+
+def analysis_pipeline(course_id: str, raw_comments: list[Any], output_dir: Path | None = None, write_files: bool = True, dedupe_exact_comments: bool = True, use_rag: bool = True, model_choice: str = "local", quantitative: list[dict[str, Any]] | None = None, extraction: dict[str, Any] | None = None, progress: Callable[[str, int, int], None] | None = None) -> dict[str, Any]:
     output_dir = output_dir or BASE_DIR / "results" / "combined"
     start_time = time.time()
     input_comment_count = len(raw_comments)
-    duplicate_comments_removed = 0
-
-    if dedupe_exact_comments:
-        raw_comments, duplicate_comments_removed = dedupe_comments(raw_comments)
+    items, duplicate_comments_removed = prepare_comment_items(raw_comments, dedupe_exact_comments)
+    extraction = extraction or {}
 
     classification_examples = load_classification_examples() if use_rag else []
     sentiment_examples = load_sentiment_examples() if use_rag else []
@@ -907,58 +1035,104 @@ def analysis_pipeline(course_id: str, raw_comments: list[str], output_dir: Path 
     per_feedback_scores: dict[str, list[int]] = {}
     classification_error_count = 0
     failed_score_count = 0
+    drop_counts = {"topic_unsupported": 0, "low_confidence": 0, "all_topics_rejected": 0}
+    non_teaching_skipped = 0
 
-    for idx, feedback in enumerate(raw_comments, 1):
-        classification = classify_with_llama(feedback, classification_examples=classification_examples, evidence_filter_mode=evidence_filter_mode, model_choice=model_choice)
-        topics = classification.get("topics", [OTHER])
-        classification_status = classification.get("classification_status", "classified")
-        classification_reasoning = classification.get("classification_reasoning", "")
-        if classification_status == "model_error":
+    general_scores: list[int] = []
+    pace_directions = {direction: 0 for direction in PACE_DIRECTIONS}
+
+    def assess(item: dict[str, Any]) -> dict[str, Any]:
+        try:
+            if settings.PIPELINE_MODE == "two_step":
+                return assess_comment_two_step(item["text"], classification_examples, sentiment_examples, model_choice, item["question"])
+            return analyze_comment(item["text"], classification_examples, sentiment_examples, model_choice=model_choice, question=item["question"])
+        except Exception as exc:  # never let one comment sink the whole report
+            logger.exception("Assessment failed for one comment")
+            return {"status": "model_error", "reasoning": f"Unexpected error: {exc}", "topic_results": [], "general_score": None}
+
+    def notify(stage: str, done: int, total: int) -> None:
+        if progress is not None:
+            try:
+                progress(stage, done, total)
+            except Exception:
+                logger.exception("Progress callback failed")
+
+    # LLM calls run in parallel; results are then aggregated in the original comment order
+    to_assess = [index for index, item in enumerate(items) if not item["non_teaching_question"]]
+    assessments: dict[int, dict[str, Any]] = {}
+    notify("comments", 0, len(to_assess))
+    with ThreadPoolExecutor(max_workers=settings.max_parallel_calls(model_choice)) as pool:
+        futures = {pool.submit(assess, items[index]): index for index in to_assess}
+        for done, future in enumerate(as_completed(futures), 1):
+            assessments[futures[future]] = future.result()
+            notify("comments", done, len(to_assess))
+
+    for index, item in enumerate(items):
+        feedback, question = item["text"], item["question"]
+
+        if item["non_teaching_question"]:
+            # e.g. "Did you feel prepared by prior coursework?" answers describe the student, not the teaching
+            non_teaching_skipped += 1
+            topic_comments[OTHER].append(other_entry(feedback, "skipped_question", "not_applicable", "Answer to a survey question that is not about the teaching; not scored.", question))
+            continue
+
+        assessment = assessments[index]
+        status = assessment["status"]
+
+        if status == "model_error":
             classification_error_count += 1
+            topic_comments[OTHER].append(other_entry(feedback, status, "classification_error", assessment["reasoning"], question))
+            continue
 
-        passed_scoring_topics = 0 
+        if not assessment["topic_results"]:
+            entry = other_entry(feedback, status, "not_applicable", "Generic or non-actionable feedback; no rubric score assigned.", question)
+            if isinstance(assessment["general_score"], int):
+                entry["general_score"] = assessment["general_score"]
+                general_scores.append(assessment["general_score"])
+            topic_comments[OTHER].append(entry)
+            continue
 
-        for topic in topics:
-            if topic == OTHER:
-                if classification_status == "model_error":
-                    continue
-                scoring_status = "classification_error" if classification_status == "model_error" else "not_applicable"
-                reasoning = classification_reasoning if classification_status == "model_error" else "Generic or non-actionable feedback; no rubric score assigned."
-                topic_comments[OTHER].append({"feedback": feedback, "sentiment": None, "score": None, "confidence": None, "classification_status": classification_status, "topic_supported": None, "evidence_quote": None, "scoring_status": scoring_status, "reasoning": reasoning})
-                passed_scoring_topics += 1
+        passed_scoring_topics = 0
+        for topic, scored in assessment["topic_results"]:
+            # Check model errors before the confidence gate, because errors carry confidence 0.0
+            if scored.get("scoring_status") == "model_error":
+                failed_score_count += 1
                 continue
-
-            scored = sentiment_with_llama(feedback, topic, sentiment_examples=sentiment_examples, model_choice=model_choice)
-            is_mismatched = scored.pop("is_mismatched", False)
+            if scored.get("topic_supported") is False:
+                drop_counts["topic_unsupported"] += 1
+                continue
             threshold = CONFIDENCE_THRESHOLDS.get(topic, CONFIDENCE_THRESHOLDS["default"])
-            unsupported_topic = scored.get("topic_supported") is False
-            
-            if unsupported_topic or scored.get("confidence", 0) < threshold:
+            if settings.CONFIDENCE_GATE and scored.get("confidence", 0) < threshold:
+                drop_counts["low_confidence"] += 1
                 continue
-            
+
             score = scored.get("score")
             if isinstance(score, int):
                 per_feedback_scores.setdefault(feedback, []).append(score)
-            elif scored.get("scoring_status") == "model_error":
-                failed_score_count += 1
-                continue
-            
+            if topic == "Pace" and scored.get("direction") in pace_directions:
+                pace_directions[scored["direction"]] += 1
 
-            topic_comments[topic].append({"feedback": feedback, "classification_status": classification_status, **scored})
+            topic_comments[topic].append({"feedback": feedback, "question": question, "classification_status": status, **scored})
             passed_scoring_topics += 1
 
         if passed_scoring_topics == 0:
-            topic_comments[OTHER].append({
-                "feedback": feedback,
-                "sentiment": None,
-                "score": None,
-                "confidence": None,
-                "classification_status": classification_status,
-                "topic_supported": None,
-                "evidence_quote": None,
-                "scoring_status": "not_applicable",
-                "reasoning": "Model rejected specific topic during scoring phase; defaulted to Uncategorized."
-            })
+            drop_counts["all_topics_rejected"] += 1
+            topic_comments[OTHER].append(other_entry(feedback, status, "not_applicable", "Model rejected specific topic during scoring phase; defaulted to Uncategorized.", question))
+
+    topic_averages = {
+        topic: mean_score([item["score"] for item in topic_comments[topic] if isinstance(item.get("score"), int)])
+        for topic in TOPIC_KEYS
+    }
+    notify("summaries", 0, len(TOPICS))
+    with ThreadPoolExecutor(max_workers=settings.max_parallel_calls(model_choice)) as pool:
+        summary_futures = {
+            topic: pool.submit(summarize_topic, topic, topic_comments[topic], topic_averages.get(topic), model_choice=model_choice)
+            for topic in TOPICS
+        }
+        summaries = {}
+        for done, topic in enumerate(TOPICS, 1):
+            summaries[topic] = summary_futures[topic].result()
+            notify("summaries", done, len(TOPICS))
 
     categories = []
     category_scores = []
@@ -966,14 +1140,16 @@ def analysis_pipeline(course_id: str, raw_comments: list[str], output_dir: Path 
     for topic in TOPIC_KEYS:
         comments = topic_comments[topic]
         scores = [item["score"] for item in comments if isinstance(item.get("score"), int)]
-        average_score = mean_score(scores)
+        average_score = topic_averages[topic]
         reliability, _ = reliability_for_topic(comments)
-        summary = summarize_topic_with_llama(topic, comments, average_score, model_choice=model_choice)
+        summary = summaries[topic]
         categories.append({"topic": topic, "average_score": average_score, "comment_count": len(comments), "scored_comment_count": len(scores), "reliability": reliability, "comments": comments})
+        if topic == "Pace":
+            categories[-1]["direction_counts"] = pace_directions
         category_scores.append(public_category_score(categories[-1]))
         topic_summaries.append({"topic": topic, "summary": summary})
 
-    other_summary = summarize_topic_with_llama(OTHER, topic_comments[OTHER], None, model_choice=model_choice)
+    other_summary = summaries[OTHER]
     categories.append({"topic": OTHER, "average_score": None, "comment_count": len(topic_comments[OTHER]), "scored_comment_count": 0, "reliability": "not_scored", "comments": topic_comments[OTHER]})
     topic_summaries.append({"topic": OTHER, "summary": other_summary})
 
@@ -987,14 +1163,32 @@ def analysis_pipeline(course_id: str, raw_comments: list[str], output_dir: Path 
         "category_scores": category_scores,
         "topic_summaries": topic_summaries,
         "categories": [public_category(category) for category in categories],
+        "quantitative": quantitative or [],
+        # Tone of generic comments ("Great professor!") that fit no topic; kept apart from overall_score
+        "general_sentiment": {
+            "average_score": mean_score(general_scores),
+            "scored_comments": len(general_scores),
+            "positive": sum(1 for s in general_scores if s >= 4),
+            "neutral": sum(1 for s in general_scores if s == 3),
+            "negative": sum(1 for s in general_scores if s <= 2),
+        },
         "metadata": {
             "input_comments": input_comment_count,
-            "processed_comments": len(raw_comments),
+            "processed_comments": len(items),
+            "non_teaching_skipped": non_teaching_skipped,
+            "parser": extraction.get("parser", ""),
+            "extraction_warnings": extraction.get("warnings", []),
             "duplicates_removed": duplicate_comments_removed,
             "scored_comments": len(per_comment_score_means),
             "generic_comments": len(topic_comments[OTHER]),
             "rag_enabled": use_rag,
-            "evidence_filter_mode": evidence_filter_mode,
+            "model_id": settings.model_id_for(model_choice),
+            "pipeline_mode": settings.PIPELINE_MODE,
+            "confidence_gate": settings.CONFIDENCE_GATE,
+            "prompt_version": settings.PROMPT_VERSION,
+            "classification_errors": classification_error_count,
+            "scoring_errors": failed_score_count,
+            "dropped_topic_assignments": drop_counts,
             "warnings": warnings,
             "runtime_seconds": round(time.time() - start_time, 2),
         },

@@ -231,11 +231,13 @@ SCORING_RUBRIC = {
     },
 
     "Pace": {
-        1: "The course pace moves way too fast, making it hard to keep up.",
-        2: "The course pace was far too slow and made it hard to stay engaged.",
-        3: "The course pace moves somewhat fast.",
-        4: "The course pace was somewhat slow at times.",
-        5: "The course pace was reasonable overall."
+        # Scores how appropriate the pace was (bad -> good). Whether it was too fast or too slow
+        # is recorded separately as the comment's "direction".
+        1: "The pace was a serious problem (far too fast or far too slow), making it very hard to keep up or stay engaged.",
+        2: "The pace was clearly off (too fast or too slow) for much of the course.",
+        3: "The pace was somewhat off at times but manageable.",
+        4: "The pace was mostly appropriate, with minor rushed or slow moments.",
+        5: "The pace was well suited to the material and easy to follow."
     },
 
     "Workload": {

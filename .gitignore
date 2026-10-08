@@ -21,6 +21,8 @@ NLP/history.json
 NLP/temp_export.zip
 NLP/results/
 NLP/HUMAN_*.csv
+NLP/eval_runs/
+NLP/cache/
 *.pdf
 
 # Local tooling / OS
