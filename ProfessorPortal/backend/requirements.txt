@@ -1,0 +1,10 @@
+# Professor Portal backend (server.py, models.py, create_user.py)
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+PyJWT>=2.8
+bcrypt>=4.1
+python-dotenv>=1.0
+pydantic>=2.7
