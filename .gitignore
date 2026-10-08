@@ -1,2 +1,30 @@
-﻿venv/
+# Secrets (use the .env.example files as templates)
+.env
+**/.env
+
+# Python
 __pycache__/
+*.pyc
+venv/
+.venv/
+
+# Node / build output
+node_modules/
+dist/
+dist-ssr/
+*.log
+
+# Student evaluation data and runtime state (never commit real evaluations)
+NLP/saved_inputs/
+NLP/saved_results/
+NLP/history.json
+NLP/temp_export.zip
+NLP/results/
+NLP/HUMAN_*.csv
+*.pdf
+
+# Local tooling / OS
+.claude/
+.vscode/
+.idea/
+.DS_Store
