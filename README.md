@@ -31,7 +31,7 @@ comment.
 
 | Folder | What it is | Default port |
 |---|---|---|
-| `OCR/` | FastAPI server. Extracts text from PDF/XLSX/CSV/DOCX and filters out survey boilerplate with regex rules plus a small TF-IDF + LinearSVC classifier. | 8000 |
+| `OCR/` | FastAPI server (`extractors.py`). Reads PDF/XLSX/CSV/DOCX and returns each student answer **whole**, with the survey question it answers, plus the rating tables (Excel/CSV). Survey boilerplate, rating rows and unreadable PDF text are filtered with rules and a small TF-IDF + LinearSVC classifier. | 8000 |
 | `NLP/` | The LLM pipeline (`main.py`), topic and rubric definitions (`data.py`) and the API the admin dashboard calls (`api.py`). See [NLP/README.md](NLP/README.md). Research scripts are described in [NLP/experiments.md](NLP/experiments.md). | 8001 |
 | `dashboard/` | Admin React app. Batch-uploads evaluation files, picks the LLM, shows run history and downloads reports as a ZIP. | 5173 |
 | `ProfessorPortal/frontend/` | Professor-facing React app. Professors load their JSON report to see scores, charts, topic summaries and comments. They can ignore comments for a topic, which recalculates the scores, and export the edited JSON. | `/course-eval/` |
@@ -65,7 +65,7 @@ The classifier files (`comment_classifier.pkl`, `tfidf_vectorizer.pkl`) are incl
 ```bash
 cd NLP
 copy .env.example .env            # add OPENAI_API_KEY / ANTHROPIC_API_KEY if needed
-python api.py                     # http://localhost:8001
+python api.py                     # http://127.0.0.1:8001
 ```
 
 The local model is configured by `OLLAMA_URL` and `MODEL` at the top of `NLP/main.py`.
@@ -125,6 +125,18 @@ handle_path /course-eval/* {
     file_server
 }
 ```
+
+## Tests and evaluation
+
+```bash
+pip install -r requirements-dev.txt
+cd OCR && pytest tests            # extractor tests (synthetic files only)
+cd NLP && pytest tests            # pipeline + API tests (fake LLM, temp folders)
+cd NLP && python eval.py --model openai   # accuracy against the human baselines (needs the local baseline CSVs)
+```
+
+Pipeline settings (models, parallel calls, cache, API host/CORS/key, single vs two-step mode) are documented in
+`NLP/.env.example` and `NLP/settings.py`.
 
 ## Data and privacy
 

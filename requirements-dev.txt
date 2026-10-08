@@ -1,0 +1,4 @@
+# Test tools. Run each suite from its own folder: (cd OCR && pytest tests) and (cd NLP && pytest tests)
+-r requirements.txt
+pytest>=8.0
+httpx>=0.27
