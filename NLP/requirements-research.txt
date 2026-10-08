@@ -1,0 +1,7 @@
+# Extra dependencies for the research scripts in experiments/ and comparison/
+-r requirements.txt
+matplotlib>=3.8
+numpy>=1.26
+pandas>=2.2
+torch>=2.2
+transformers>=4.41

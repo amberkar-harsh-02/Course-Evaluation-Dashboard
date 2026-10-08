@@ -1,0 +1,7 @@
+# Runtime dependencies for the NLP pipeline and API (main.py, api.py)
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+requests>=2.31
+python-dotenv>=1.0
+pydantic>=2.7
