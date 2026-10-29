@@ -119,6 +119,34 @@ const recalculateReport = (rawReport) => {
   };
 };
 
+// Older reports store list bullets as the replacement character "�"; same rules as the pipeline's strip_bullets
+const BULLET_CHARS = "•●○◦▪▫■□‣⁃∙·➢➤►▶✓✔�";
+const escapeForClass = (chars) => chars.replace(/[\\\]^-]/g, "\\$&");
+const LINE_BULLET = `(?:[${escapeForClass(BULLET_CHARS)}*]|-(?=\\s))`;
+
+const stripBullets = (text) => {
+  if (typeof text !== "string") return text;
+  return text
+    .replace(new RegExp(`\\n[ \\t]*${LINE_BULLET}[ \\t]*`, "g"), "; ")             // bullet starting a new line
+    .replace(new RegExp(`^[ \\t]*${LINE_BULLET}[ \\t]*`), "")                       // bullet at the very start
+    .replace(new RegExp(`[ \\t]+[${escapeForClass(BULLET_CHARS)}][ \\t]+`, "g"), "; ") // bullet between items
+    .replace(/:\s*;\s*/g, ": ")                                                       // "Strengths:; good" -> "Strengths: good"
+    .replace(/(;\s*)+/g, "; ")
+    .replace(/�/g, "'");                                                         // inside a word it was an apostrophe
+};
+
+const cleanReportText = (rawData) => {
+  if (!rawData || !Array.isArray(rawData.categories)) return rawData;
+  return {
+    ...rawData,
+    categories: rawData.categories.map(cat => ({
+      ...cat,
+      comments: (cat.comments || []).map(c => ({ ...c, feedback: stripBullets(c.feedback) }))
+    })),
+    topic_summaries: (rawData.topic_summaries || []).map(s => ({ ...s, summary: stripBullets(s.summary) }))
+  };
+};
+
 const normalizeReport = (rawData) => {
   if (!rawData.categories) return rawData;
 
@@ -210,7 +238,7 @@ function Dashboard() {
         rawString = rawString.replace(/None of the above\/other/gi, "Uncategorized/Unrated");
         
         const rawData = JSON.parse(rawString);
-        const normalizedData = normalizeReport(rawData);
+        const normalizedData = normalizeReport(cleanReportText(rawData));
 
         setAnalysisData(normalizedData);
         setIsIgnoreMode(false);
