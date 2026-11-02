@@ -20,8 +20,8 @@ export const initialTheme = () => {
 
 // Colors for charts drawn in SVG, which can't read the CSS variables directly
 export const CHART_COLORS = {
-  light: { low: '#9B2C2C', mid: '#5B6573', high: '#1F6F5C', accent: '#1F4E79', grid: '#DCE1E7', axis: '#6B7482', ink: '#1B2533', paper: '#FFFFFF', series: ['#1F4E79', '#1F6F5C', '#9A5B13', '#6B3FA0', '#9B2C2C', '#5B6573'] },
-  dark: { low: '#E48888', mid: '#A0AAB8', high: '#6CC4A7', accent: '#7EA8D4', grid: '#303946', axis: '#8E97A5', ink: '#E4E9F0', paper: '#1A2029', series: ['#7EA8D4', '#6CC4A7', '#E0A960', '#B49AE0', '#E48888', '#A0AAB8'] },
+  light: { low: '#B42318', mid: '#B26B00', high: '#1E7A4F', accent: '#1E5A8A', grid: '#E2E3E0', axis: '#5F6670', ink: '#1C2128', paper: '#FFFFFF', series: ['#1E5A8A', '#1E7A4F', '#B26B00', '#6B4FA3', '#B42318', '#5F6670'] },
+  dark: { low: '#F08A80', mid: '#E3A94B', high: '#5CC08E', accent: '#7FB3E0', grid: '#2E3238', axis: '#9AA1AA', ink: '#E7E9EC', paper: '#1B1E22', series: ['#7FB3E0', '#5CC08E', '#E3A94B', '#B9A3E8', '#F08A80', '#9AA1AA'] },
 };
 
 const ThemeContext = createContext({ theme: 'light', toggleTheme: () => {} });

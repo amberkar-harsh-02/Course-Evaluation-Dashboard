@@ -5,7 +5,7 @@ import SearchField from '../components/SearchField';
 
 const BADGE = {
   low: 'bg-score-lowTint text-score-low',
-  mid: 'bg-line-soft text-score-mid',
+  mid: 'bg-score-midTint text-score-mid',
   high: 'bg-score-highTint text-score-high',
   none: 'bg-line-soft text-ink-muted',
 };

@@ -1,8 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 // Design tokens for the Course Evaluation app.
 // Colors are CSS variables (src/index.css) with a light and a dark set; the "dark" class on <html> switches them.
-// Ink and paper for reading, one academic blue for actions, and a low-to-high score scale
-// (oxblood -> slate -> pine) that is always shown next to the number, never instead of it.
+// Ink and paper for reading, one ocean blue for actions, and a low-to-high score scale
+// (red -> amber -> green) that is always shown next to the number, never instead of it.
 const token = (name) => `rgb(var(--${name}) / <alpha-value>)`;
 
 export default {
@@ -22,7 +22,7 @@ export default {
         accent: { DEFAULT: token('accent'), dark: token('accent-dark'), tint: token('accent-tint'), on: token('on-accent') },
         score: {
           low: token('score-low'), mid: token('score-mid'), high: token('score-high'),
-          lowTint: token('score-low-tint'), highTint: token('score-high-tint'),
+          lowTint: token('score-low-tint'), midTint: token('score-mid-tint'), highTint: token('score-high-tint'),
         },
       },
       fontSize: {

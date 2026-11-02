@@ -2,48 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Color tokens as RGB channels (used by tailwind.config.js). Light first, then dark. */
+/* Color tokens as RGB channels (used by tailwind.config.js). "Monterey Bay": stone neutrals, one ocean-blue
+   accent, and a red / amber / green score scale. Every text pair is at least 4.5:1 (WCAG AA). Light first, then dark. */
 :root {
   color-scheme: light;
-  --ink: 27 37 51;            /* #1B2533 */
-  --ink-soft: 61 71 86;
-  --ink-muted: 107 116 130;
-  --paper: 255 255 255;
-  --page: 244 246 248;
-  --line: 220 225 231;
-  --line-soft: 235 238 242;
-  --line-strong: 185 195 207;
-  --accent: 31 78 121;        /* #1F4E79 */
-  --accent-dark: 23 59 92;
-  --accent-tint: 232 239 246;
-  --on-accent: 255 255 255;
-  --score-low: 155 44 44;     /* oxblood */
-  --score-mid: 91 101 115;    /* slate */
-  --score-high: 31 111 92;    /* pine */
-  --score-low-tint: 246 233 233;
-  --score-high-tint: 230 241 238;
+  --ink: 28 33 40;           /* #1C2128 */
+  --ink-soft: 61 68 77;      /* #3D444D */
+  --ink-muted: 95 102 112;   /* #5F6670 */
+  --paper: 255 255 255;      /* #FFFFFF */
+  --page: 246 246 244;       /* #F6F6F4 */
+  --line: 226 227 224;       /* #E2E3E0 */
+  --line-soft: 238 238 235;  /* #EEEEEB */
+  --line-strong: 195 198 194; /* #C3C6C2 */
+  --accent: 30 90 138;       /* #1E5A8A */
+  --accent-dark: 22 69 105;  /* #164569 */
+  --accent-tint: 232 240 247; /* #E8F0F7 */
+  --on-accent: 255 255 255;  /* #FFFFFF */
+  --score-low: 180 35 24;    /* #B42318 */
+  --score-mid: 154 92 0;     /* #9A5C00 */
+  --score-high: 30 122 79;   /* #1E7A4F */
+  --score-low-tint: 251 234 232; /* #FBEAE8 */
+  --score-mid-tint: 251 241 223; /* #FBF1DF */
+  --score-high-tint: 229 243 236; /* #E5F3EC */
 }
 
-/* Dark: deep blue-grey paper, softened ink, and lighter tints of the same accent and score hues */
+/* Dark: neutral charcoal (not blue-tinted), with lighter versions of the same accent and score hues */
 .dark {
   color-scheme: dark;
-  --ink: 228 233 240;
-  --ink-soft: 193 201 212;
-  --ink-muted: 142 151 165;
-  --paper: 26 32 41;
-  --page: 18 23 30;
-  --line: 48 57 70;
-  --line-soft: 36 44 55;
-  --line-strong: 84 97 114;
-  --accent: 126 168 212;
-  --accent-dark: 163 194 227;
-  --accent-tint: 30 42 56;
-  --on-accent: 18 23 30;
-  --score-low: 228 136 136;
-  --score-mid: 160 170 184;
-  --score-high: 108 196 167;
-  --score-low-tint: 58 34 36;
-  --score-high-tint: 28 51 45;
+  --ink: 231 233 236;        /* #E7E9EC */
+  --ink-soft: 196 200 206;   /* #C4C8CE */
+  --ink-muted: 154 161 170;  /* #9AA1AA */
+  --paper: 27 30 34;         /* #1B1E22 */
+  --page: 18 20 22;          /* #121416 */
+  --line: 46 50 56;          /* #2E3238 */
+  --line-soft: 36 39 44;     /* #24272C */
+  --line-strong: 71 76 84;   /* #474C54 */
+  --accent: 127 179 224;     /* #7FB3E0 */
+  --accent-dark: 166 203 235; /* #A6CBEB */
+  --accent-tint: 28 42 54;   /* #1C2A36 */
+  --on-accent: 15 20 24;     /* #0F1418 */
+  --score-low: 240 138 128;  /* #F08A80 */
+  --score-mid: 227 169 75;   /* #E3A94B */
+  --score-high: 92 192 142;  /* #5CC08E */
+  --score-low-tint: 58 34 32; /* #3A2220 */
+  --score-mid-tint: 58 46 25; /* #3A2E19 */
+  --score-high-tint: 26 51 39; /* #1A3327 */
 }
 
 /* Shared building blocks. */
@@ -78,7 +81,7 @@
   textarea.input { @apply h-auto py-2.5; }
   select.input {
     @apply cursor-pointer appearance-none pr-9;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238E97A5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238A9099' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.7rem center;
     background-size: 1rem;
