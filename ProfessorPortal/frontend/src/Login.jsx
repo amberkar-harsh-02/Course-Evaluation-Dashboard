@@ -4,8 +4,8 @@ import { motion } from 'framer-motion';
 import toast, { Toaster } from 'react-hot-toast';
 
 function Login() {
-  const [email, setEmail] = useState('professor@csumb.edu');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 

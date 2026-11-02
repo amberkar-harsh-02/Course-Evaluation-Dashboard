@@ -81,19 +81,7 @@ def get_logged_in_prof(credentials: HTTPAuthorizationCredentials = Depends(secur
 # --- Startup Event (Modern Lifespan approach) ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # This runs when the server starts up
-    db = SessionLocal()
-    prof = db.query(Professor).filter(Professor.email == "professor@csumb.edu").first()
-    if not prof:
-        dummy_prof = Professor(
-            email="professor@csumb.edu",
-            hashed_password=get_password_hash("password123"),
-            name="Dr. Ramachandran"
-        )
-        db.add(dummy_prof)
-        db.commit()
-        print("🟢 Created test account: professor@csumb.edu / password123")
-    db.close()
+    # Accounts are created with create_user.py; no default account is seeded
     yield
     # Anything after yield runs when the server shuts down
 
