@@ -39,6 +39,7 @@ Open http://localhost:5173/course-eval-app/ and sign in with your admin account.
 | Request an account, then sign in once approved | yes | yes |
 | Upload a file and watch the analysis progress | yes | yes |
 | My reports: open, review (charts, topics, ignore comments), export, delete | own reports only | own reports only |
+| Compare reports across terms (score changes per topic, trend chart, Pace direction, survey ratings) | own reports only | own reports only |
 | Account: credit left, own OpenAI key, change password | yes | yes |
 | Use the local Mac Studio model | no | yes |
 | Users: approve or reject, disable or enable, set credit plan and yearly $ limit | no | yes |

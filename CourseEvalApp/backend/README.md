@@ -1,7 +1,7 @@
 # Course Eval App — backend
 
 Backend for the merged site, where professors register, get approved by the admin, run analyses and keep their
-reports. This folder is built in phases. **Done: Phase 1 (accounts, registration, admin approval), Phase 2 (credits and own API keys) and Phase 3 (uploads, analyses, reports).** See [../README.md](../README.md) for the whole app.
+reports. This folder is built in phases. **Done: Phase 1 (accounts, registration, admin approval), Phase 2 (credits and own API keys) and Phase 3 (uploads, analyses, reports) and Phase 4 (comparing reports).** See [../README.md](../README.md) for the whole app.
 
 ## Run it locally
 
@@ -96,6 +96,30 @@ How a run works:
 
 Jobs run one at a time. Their progress is kept in memory, so a server restart drops queued jobs, but saved
 reports are kept.
+
+## Comparing reports (Phase 4)
+
+`GET /api/compare?ids=3,7,9` compares 2 to 8 of the signed-in user's own reports. It returns summary numbers only:
+- overall score
+- average per topic, with the number of scored comments
+- Pace direction counts
+- general sentiment
+- rating-table means for questions found in at least two reports
+
+Reports are ordered by term ("Spring 2025" before "Fall 2025"; also "25-Fall", "F25"). Reports without a
+recognizable term come last, ordered by date.
+
+**Highlights.** The response lists up to 3 most improved and 3 most declined topics. A topic counts only when:
+- it changed by at least 0.3, and
+- it had at least 5 scored comments in both the first and the last report.
+
+**Warnings.** The response warns when:
+- the reports are for different courses
+- the reports were scored with different prompt versions
+- a report is older than the Pace-scale fix (prompt version `2026-10-08.3`)
+- a topic has a low number of scored comments
+
+Edited reports (with ignored comments) are compared using their recalculated scores.
 
 ## Database tables
 

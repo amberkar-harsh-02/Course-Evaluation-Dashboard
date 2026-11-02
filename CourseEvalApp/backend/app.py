@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 import config
 from database import get_db, init_db
 import analysis
+from compare import build_comparison, summarize_report
 from credits import credit_status, lab_spend_this_year, credit_year_start, plan_run
 from keyvault import KeyVaultError, encrypt_key, is_valid_openai_key
 from models import CreditMode, Report, Role, Status, Upload, UsageLog, User
@@ -474,6 +475,24 @@ def delete_report(report_id: int, user: User = Depends(get_current_user), db: Se
         db.delete(upload)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+MAX_COMPARE = 8
+
+
+@app.get("/api/compare")
+def compare_reports(ids: str = Query(..., description="Comma-separated report ids, e.g. 3,7,9"),
+                    user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Compare two or more of the signed-in user's reports (summary numbers only)."""
+    try:
+        report_ids = list(dict.fromkeys(int(part) for part in ids.split(",") if part.strip()))
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ids must be a comma-separated list of report numbers")
+    if not 2 <= len(report_ids) <= MAX_COMPARE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Choose between 2 and {MAX_COMPARE} reports to compare")
+    reports = [_own_report(db, user, report_id) for report_id in report_ids]
+    summaries = [summarize_report(r.id, r.course, r.term, r.created_at, r.report_json or {}) for r in reports]
+    return build_comparison(summaries)
 
 
 if __name__ == "__main__":
