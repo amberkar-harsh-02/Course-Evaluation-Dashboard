@@ -2,7 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Shared building blocks. Tokens live in tailwind.config.js. */
+/* Color tokens as RGB channels (used by tailwind.config.js). Light first, then dark. */
+:root {
+  color-scheme: light;
+  --ink: 27 37 51;            /* #1B2533 */
+  --ink-soft: 61 71 86;
+  --ink-muted: 107 116 130;
+  --paper: 255 255 255;
+  --page: 244 246 248;
+  --line: 220 225 231;
+  --line-soft: 235 238 242;
+  --line-strong: 185 195 207;
+  --accent: 31 78 121;        /* #1F4E79 */
+  --accent-dark: 23 59 92;
+  --accent-tint: 232 239 246;
+  --on-accent: 255 255 255;
+  --score-low: 155 44 44;     /* oxblood */
+  --score-mid: 91 101 115;    /* slate */
+  --score-high: 31 111 92;    /* pine */
+  --score-low-tint: 246 233 233;
+  --score-high-tint: 230 241 238;
+}
+
+/* Dark: deep blue-grey paper, softened ink, and lighter tints of the same accent and score hues */
+.dark {
+  color-scheme: dark;
+  --ink: 228 233 240;
+  --ink-soft: 193 201 212;
+  --ink-muted: 142 151 165;
+  --paper: 26 32 41;
+  --page: 18 23 30;
+  --line: 48 57 70;
+  --line-soft: 36 44 55;
+  --line-strong: 84 97 114;
+  --accent: 126 168 212;
+  --accent-dark: 163 194 227;
+  --accent-tint: 30 42 56;
+  --on-accent: 18 23 30;
+  --score-low: 228 136 136;
+  --score-mid: 160 170 184;
+  --score-high: 108 196 167;
+  --score-low-tint: 58 34 36;
+  --score-high-tint: 28 51 45;
+}
+
+/* Shared building blocks. */
 @layer base {
   body {
     @apply bg-page font-sans text-base text-ink antialiased;
@@ -24,7 +68,7 @@
   .label { @apply mb-1 block text-sm font-medium text-ink-soft; }
   .input { @apply w-full rounded border border-line bg-paper px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-accent focus:ring-1 focus:ring-accent disabled:bg-page; }
   .btn { @apply inline-flex items-center justify-center gap-2 rounded px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50; }
-  .btn-primary { @apply btn bg-accent text-white hover:bg-accent-dark; }
+  .btn-primary { @apply btn bg-accent text-accent-on hover:bg-accent-dark; }
   .btn-secondary { @apply btn border border-line bg-paper text-ink-soft hover:border-ink-muted hover:text-ink; }
   .btn-danger { @apply btn border border-line bg-paper text-score-low hover:border-score-low; }
   .link { @apply font-medium text-accent underline-offset-2 hover:underline; }

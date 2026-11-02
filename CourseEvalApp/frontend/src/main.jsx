@@ -11,6 +11,7 @@ import '@fontsource/ibm-plex-serif/500.css';
 import './index.css';
 
 import { AuthProvider, useAuth } from './auth';
+import { ThemeProvider, initialTheme } from './theme';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -32,8 +33,11 @@ function RequireAuth({ children, admin = false }) {
 
 RequireAuth.propTypes = { children: PropTypes.node, admin: PropTypes.bool };
 
+initialTheme();
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
+    <ThemeProvider>
     <BrowserRouter basename="/course-eval-app">
       <AuthProvider>
         <Toaster position="bottom-right" toastOptions={{ className: 'text-sm' }} />
@@ -53,5 +57,6 @@ createRoot(document.getElementById('root')).render(
         </Routes>
       </AuthProvider>
     </BrowserRouter>
+    </ThemeProvider>
   </StrictMode>,
 );

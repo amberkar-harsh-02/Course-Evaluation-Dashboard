@@ -1,9 +1,13 @@
 import { useMemo, useState } from 'react';
 import PropTypes from 'prop-types';
-import { formatScore, scoreTone } from './model';
+import { scoreTone, shortName } from './model';
 
-const RULE = { low: 'border-score-low', mid: 'border-score-mid', high: 'border-score-high', none: 'border-line' };
-const TEXT = { low: 'text-score-low', mid: 'text-score-mid', high: 'text-score-high', none: 'text-ink-muted' };
+const BADGE = {
+  low: 'bg-score-lowTint text-score-low',
+  mid: 'bg-line-soft text-score-mid',
+  high: 'bg-score-highTint text-score-high',
+  none: 'bg-line-soft text-ink-muted',
+};
 const SORTS = {
   original: { label: 'Original order', fn: () => 0 },
   low: { label: 'Lowest score first', fn: (a, b) => (a.score ?? 6) - (b.score ?? 6) },
@@ -11,28 +15,33 @@ const SORTS = {
 };
 const FILTERS = {
   all: { label: 'All scores', test: () => true },
-  low: { label: 'Scored 1 or 2', test: (c) => c.score !== null && c.score <= 2 },
-  mid: { label: 'Scored 3', test: (c) => c.score === 3 },
-  high: { label: 'Scored 4 or 5', test: (c) => c.score !== null && c.score >= 4 },
+  low: { label: 'Needs attention (1–2)', test: (c) => c.score !== null && c.score <= 2 },
+  mid: { label: 'Mixed (3)', test: (c) => c.score === 3 },
+  high: { label: 'Positive (4–5)', test: (c) => c.score !== null && c.score >= 4 },
   none: { label: 'Not scored', test: (c) => c.score === null },
 };
 
 /**
- * Student comments with search, score filter and sort.
- * Each comment: { text, question, score, topics?, ignored, selected? }.
+ * Student comments with search, filters and sort.
+ * Each comment: { text, question, score, topics?: string[], scores?: {topic: score}, ignored }.
+ * Pass `topicOptions` to add a topic filter; `selecting` adds checkboxes for ignore mode.
  */
-export default function CommentList({ comments, showTopics = false, selecting = false, selected, onToggle, emptyText }) {
+export default function CommentList({ comments, topicOptions = null, selecting = false, selected, onToggle, emptyText, idPrefix = 'comments' }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
+  const [topic, setTopic] = useState('all');
   const [sort, setSort] = useState('original');
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return comments
-      .map((c, index) => ({ ...c, index }))
-      .filter((c) => FILTERS[filter].test(c) && (!q || c.text.toLowerCase().includes(q)))
+      // With a topic chosen, show and filter by that topic's score (comments can score differently per topic)
+      .map((c, index) => ({ ...c, index, score: topic !== 'all' && c.scores?.[topic] != null ? c.scores[topic] : c.score }))
+      .filter((c) => FILTERS[filter].test(c)
+        && (topic === 'all' || c.topics?.includes(topic))
+        && (!q || c.text.toLowerCase().includes(q)))
       .sort((a, b) => SORTS[sort].fn(a, b) || a.index - b.index);
-  }, [comments, query, filter, sort]);
+  }, [comments, query, filter, topic, sort]);
 
   // When every comment answers the same survey question, say it once instead of on each comment
   const questions = [...new Set(comments.map((c) => c.question).filter(Boolean))];
@@ -42,64 +51,77 @@ export default function CommentList({ comments, showTopics = false, selecting = 
     <div>
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-48 flex-1">
-          <label className="label" htmlFor="comment-search">Search comments</label>
-          <input id="comment-search" className="input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="e.g. office hours" />
+          <label className="label" htmlFor={`${idPrefix}-search`}>Search</label>
+          <input id={`${idPrefix}-search`} className="input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search comments" />
         </div>
+        {topicOptions && (
+          <div>
+            <label className="label" htmlFor={`${idPrefix}-topic`}>Topic</label>
+            <select id={`${idPrefix}-topic`} className="input" value={topic} onChange={(e) => setTopic(e.target.value)}>
+              <option value="all">All topics</option>
+              {topicOptions.map((t) => <option key={t} value={t}>{shortName(t)}</option>)}
+            </select>
+          </div>
+        )}
         <div>
-          <label className="label" htmlFor="comment-filter">Show</label>
-          <select id="comment-filter" className="input" value={filter} onChange={(e) => setFilter(e.target.value)}>
+          <label className="label" htmlFor={`${idPrefix}-filter`}>Score</label>
+          <select id={`${idPrefix}-filter`} className="input" value={filter} onChange={(e) => setFilter(e.target.value)}>
             {Object.entries(FILTERS).map(([key, f]) => <option key={key} value={key}>{f.label}</option>)}
           </select>
         </div>
         <div>
-          <label className="label" htmlFor="comment-sort">Order</label>
-          <select id="comment-sort" className="input" value={sort} onChange={(e) => setSort(e.target.value)}>
+          <label className="label" htmlFor={`${idPrefix}-sort`}>Order</label>
+          <select id={`${idPrefix}-sort`} className="input" value={sort} onChange={(e) => setSort(e.target.value)}>
             {Object.entries(SORTS).map(([key, s]) => <option key={key} value={key}>{s.label}</option>)}
           </select>
         </div>
       </div>
-      {sharedQuestion && <p className="mt-4 max-w-[72ch] text-sm text-ink-soft">Answers to: {sharedQuestion}</p>}
-      <p className="mt-3 text-sm text-ink-muted" aria-live="polite">
-        {visible.length === comments.length ? `${comments.length} comments` : `${visible.length} of ${comments.length} comments`}
-      </p>
+
+      <div className="mt-4 flex flex-wrap items-baseline justify-between gap-2 text-sm">
+        <p className="text-ink-muted" aria-live="polite">
+          {visible.length === comments.length ? `${comments.length} comments` : `${visible.length} of ${comments.length} comments`}
+        </p>
+        {sharedQuestion && <p className="max-w-[72ch] text-ink-muted">Answers to: {sharedQuestion}</p>}
+      </div>
 
       {visible.length === 0 ? (
-        <p className="mt-4 text-sm text-ink-muted">{comments.length === 0 ? emptyText : 'No comments match. Clear the search or choose another score.'}</p>
+        <p className="mt-4 rounded border border-dashed border-line px-4 py-6 text-center text-sm text-ink-muted">
+          {comments.length === 0 ? emptyText : 'No comments match. Clear the search or pick another filter.'}
+        </p>
       ) : (
-        <ul className="mt-3 space-y-3">
+        <ul className="mt-3 divide-y divide-line-soft rounded border border-line bg-paper">
           {visible.map((c) => {
             const checked = selecting && selected?.has(c.text);
             const tone = scoreTone(c.score);
-            const body = (
-              <>
-                <div className="flex items-start gap-4">
-                  {selecting && (
-                    <input
-                      type="checkbox"
-                      className="mt-1 h-4 w-4 shrink-0 accent-accent"
-                      checked={checked}
-                      onChange={() => onToggle(c.text)}
-                      aria-label={`Ignore this comment: ${c.text.slice(0, 60)}`}
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className={`max-w-[72ch] leading-relaxed ${c.ignored && !selecting ? 'text-ink-muted line-through decoration-ink-muted/40' : 'text-ink'}`}>{c.text}</p>
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
-                      {c.question && !sharedQuestion && <span className="max-w-[60ch] truncate" title={c.question}>Answer to: {c.question}</span>}
-                      {showTopics && c.topics?.length > 0 && <span>Topics: {c.topics.join(', ')}</span>}
-                      {c.ignored && !selecting && <span className="font-medium text-ink-soft">Ignored for this topic</span>}
-                    </div>
-                  </div>
-                  <span className={`num shrink-0 font-serif text-lg font-medium ${TEXT[tone]}`}
-                        title={c.score === null ? 'No rubric score' : `Rubric score ${c.score} of 5`}>
-                    {c.score === null ? '—' : formatScore(c.score, 0)}
-                  </span>
-                </div>
-              </>
-            );
             return (
-              <li key={c.index} className={`border-l-2 bg-paper py-3 pl-4 pr-4 ${RULE[tone]} ${checked ? 'ring-1 ring-accent' : ''}`}>
-                {body}
+              <li key={c.index} className={`flex items-start gap-4 px-4 py-3.5 ${checked ? 'bg-accent-tint' : ''}`}>
+                {selecting && (
+                  <input
+                    type="checkbox"
+                    className="mt-2 h-4 w-4 shrink-0 accent-accent"
+                    checked={checked}
+                    onChange={() => onToggle(c.text)}
+                    aria-label={`Ignore this comment: ${c.text.slice(0, 60)}`}
+                  />
+                )}
+                <span
+                  className={`num flex h-9 w-9 shrink-0 items-center justify-center rounded font-serif text-base font-medium ${BADGE[tone]}`}
+                  title={c.score === null ? 'No rubric score' : `Rubric score ${c.score} of 5`}
+                >
+                  {c.score === null ? '–' : c.score}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className={`max-w-[80ch] leading-relaxed ${c.ignored && !selecting ? 'text-ink-muted line-through decoration-ink-muted/40' : 'text-ink'}`}>{c.text}</p>
+                  {(c.topics?.length > 0 || (c.question && !sharedQuestion) || (c.ignored && !selecting)) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                      {c.topics?.map((t) => (
+                        <span key={t} className="rounded-sm bg-accent-tint px-2 py-0.5 font-medium text-accent" title={t}>{shortName(t)}</span>
+                      ))}
+                      {c.ignored && !selecting && <span className="rounded-sm bg-line-soft px-2 py-0.5 font-medium text-ink-soft">Ignored</span>}
+                      {c.question && !sharedQuestion && <span className="max-w-[60ch] truncate text-ink-muted" title={c.question}>Answer to: {c.question}</span>}
+                    </div>
+                  )}
+                </div>
               </li>
             );
           })}
@@ -114,9 +136,10 @@ CommentList.propTypes = {
     text: PropTypes.string.isRequired, question: PropTypes.string, score: PropTypes.number,
     topics: PropTypes.arrayOf(PropTypes.string), ignored: PropTypes.bool,
   })).isRequired,
-  showTopics: PropTypes.bool,
+  topicOptions: PropTypes.arrayOf(PropTypes.string),
   selecting: PropTypes.bool,
   selected: PropTypes.instanceOf(Set),
   onToggle: PropTypes.func,
   emptyText: PropTypes.string,
+  idPrefix: PropTypes.string,
 };

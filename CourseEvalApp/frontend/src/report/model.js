@@ -97,6 +97,20 @@ const themeText = (summary, topic) => {
   return text.trim();
 };
 
+// Short topic names for charts and cards (full name is shown in titles and tooltips)
+const SHORT_NAMES = {
+  'Course organization and structure': 'Organization',
+  'Student engagement and participation': 'Engagement',
+  'Clarity of explanations': 'Clarity',
+  'Effectiveness of assignments': 'Assignments',
+  'Classroom atmosphere': 'Atmosphere',
+  "Instructor's communication and availability": 'Communication',
+  'Inclusivity and sense of belonging': 'Inclusivity',
+  'Grading and feedback': 'Grading and feedback',
+  'Learning resources and materials': 'Resources',
+};
+export const shortName = (topic) => SHORT_NAMES[topic] || topic;
+
 export const scoreTone = (score) => {
   if (score === null || score === undefined) return 'none';
   if (score < 2.5) return 'low';
@@ -147,6 +161,11 @@ export const buildView = (report) => {
       ignored: comments.filter((c) => c.ignored).length,
       reliability: cat.reliability || '',
       distribution,
+      sentiment: {
+        positive: activeScores.filter((s) => s >= 4).length,
+        neutral: activeScores.filter((s) => s === 3).length,
+        negative: activeScores.filter((s) => s <= 2).length,
+      },
       directions: cat.direction_counts || null,
       summary: themeText(summaries[cat.topic], cat.topic),
       comments,

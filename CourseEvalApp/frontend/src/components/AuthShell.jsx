@@ -1,8 +1,10 @@
 import PropTypes from 'prop-types';
+import { ThemeToggle } from '../theme';
 
 export default function AuthShell({ title, subtitle, children }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-page px-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-page px-4">
+      <ThemeToggle className="absolute right-5 top-5" />
       <div className="w-full max-w-sm">
         <p className="mb-6 text-center font-serif text-xl text-ink">Course Evaluation</p>
         <div className="card">

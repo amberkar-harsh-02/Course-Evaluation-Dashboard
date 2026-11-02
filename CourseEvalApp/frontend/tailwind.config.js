@@ -1,8 +1,12 @@
 /** @type {import('tailwindcss').Config} */
-// Design tokens for the Course Evaluation app (Phase 5).
+// Design tokens for the Course Evaluation app.
+// Colors are CSS variables (src/index.css) with a light and a dark set; the "dark" class on <html> switches them.
 // Ink and paper for reading, one academic blue for actions, and a low-to-high score scale
 // (oxblood -> slate -> pine) that is always shown next to the number, never instead of it.
+const token = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+
 export default {
+  darkMode: 'class',
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
@@ -11,12 +15,15 @@ export default {
         serif: ['"IBM Plex Serif"', 'Georgia', 'serif'],
       },
       colors: {
-        ink: { DEFAULT: '#1B2533', soft: '#3D4756', muted: '#6B7482' },
-        paper: '#FFFFFF',
-        page: '#F4F6F8',
-        line: { DEFAULT: '#DCE1E7', soft: '#EBEEF2' },
-        accent: { DEFAULT: '#1F4E79', dark: '#173B5C', tint: '#E8EFF6' },
-        score: { low: '#9B2C2C', mid: '#5B6573', high: '#1F6F5C', lowTint: '#F6E9E9', highTint: '#E6F1EE' },
+        ink: { DEFAULT: token('ink'), soft: token('ink-soft'), muted: token('ink-muted') },
+        paper: token('paper'),
+        page: token('page'),
+        line: { DEFAULT: token('line'), soft: token('line-soft'), strong: token('line-strong') },
+        accent: { DEFAULT: token('accent'), dark: token('accent-dark'), tint: token('accent-tint'), on: token('on-accent') },
+        score: {
+          low: token('score-low'), mid: token('score-mid'), high: token('score-high'),
+          lowTint: token('score-low-tint'), highTint: token('score-high-tint'),
+        },
       },
       fontSize: {
         // Modular scale (ratio ~1.2) on a 15px base for dense reading

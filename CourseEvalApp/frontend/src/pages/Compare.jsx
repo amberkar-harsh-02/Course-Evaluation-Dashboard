@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import PropTypes from 'prop-types';
 import { api } from '../api';
+import { CHART_COLORS, useTheme } from '../theme';
 
 const label = (report) => report.term || report.course;
 const fmt = (value) => (value === null || value === undefined ? '—' : value.toFixed(2));
@@ -16,7 +17,6 @@ function Change({ value, muted = false }) {
 
 Change.propTypes = { value: PropTypes.number, muted: PropTypes.bool };
 
-const PALETTE = ['#1e3a8a', '#0f766e', '#b45309', '#7c3aed', '#be123c', '#475569'];
 
 export default function Compare() {
   const [params] = useSearchParams();
@@ -24,6 +24,8 @@ export default function Compare() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [chartTopics, setChartTopics] = useState([]);
+  const { theme } = useTheme();
+  const colors = CHART_COLORS[theme];
 
   useEffect(() => {
     setData(null);
@@ -114,14 +116,14 @@ export default function Compare() {
         <div className="mt-4 h-72">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartRows} margin={{ top: 8, right: 16, left: -16, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="name" stroke="#64748b" fontSize={12} />
-              <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} stroke="#64748b" fontSize={12} />
-              <Tooltip formatter={(value) => (value == null ? '—' : Number(value).toFixed(2))} />
+              <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
+              <XAxis dataKey="name" stroke={colors.axis} fontSize={12} />
+              <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} stroke={colors.axis} fontSize={12} />
+              <Tooltip formatter={(value) => (value == null ? '—' : Number(value).toFixed(2))} contentStyle={{ background: colors.paper, borderColor: colors.grid, color: colors.ink }} labelStyle={{ color: colors.ink }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Line type="monotone" dataKey="Overall" stroke="#0f172a" strokeWidth={2.5} dot={{ r: 4 }} connectNulls isAnimationActive={false} />
+              <Line type="monotone" dataKey="Overall" stroke={colors.ink} strokeWidth={2.5} dot={{ r: 4 }} connectNulls isAnimationActive={false} />
               {chartTopics.map((topic, i) => (
-                <Line key={topic} type="monotone" dataKey={topic} stroke={PALETTE[i % PALETTE.length]} strokeWidth={1.75} dot={{ r: 3 }} connectNulls isAnimationActive={false} />
+                <Line key={topic} type="monotone" dataKey={topic} stroke={colors.series[i % colors.series.length]} strokeWidth={1.75} dot={{ r: 3 }} connectNulls isAnimationActive={false} />
               ))}
             </LineChart>
           </ResponsiveContainer>
