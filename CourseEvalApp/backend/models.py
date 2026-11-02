@@ -11,6 +11,7 @@ from sqlalchemy import JSON, BigInteger, DateTime, Float, ForeignKey, Integer, S
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+import config
 from database import Base
 
 # JSONB on Postgres, plain JSON on SQLite (development and tests)
@@ -63,7 +64,8 @@ class User(Base):
 
     # Phase 2: how this user pays for analyses
     credit_mode: Mapped[str] = mapped_column(String(30), default=CreditMode.OUR_KEY_CAPPED)
-    yearly_token_cap: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Yearly limit in US dollars when credit_mode is our_key_capped
+    yearly_cap_usd: Mapped[float | None] = mapped_column(Float, nullable=True, default=lambda: config.DEFAULT_YEARLY_CAP_USD)
     encrypted_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     api_key_last4: Mapped[str | None] = mapped_column(String(4), nullable=True)
 

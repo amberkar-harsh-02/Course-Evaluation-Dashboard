@@ -8,6 +8,8 @@ BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND))
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-for-unit-tests-only-0123456789"
 os.environ["DATABASE_URL"] = "sqlite://"  # replaced per test below
+os.environ["KEY_ENCRYPTION_SECRET"] = "q8n3Jm2vPpkS0gC6Yb3ZJ1xN3WbV4l3m3x0H0nKq7aQ="  # test-only Fernet key
+os.environ["DEFAULT_YEARLY_CAP_USD"] = "20"
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402

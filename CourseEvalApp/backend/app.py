@@ -11,12 +11,14 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 import config
 from database import get_db, init_db
-from models import Role, Status, User
+from credits import credit_status, lab_spend_this_year, credit_year_start
+from keyvault import KeyVaultError, encrypt_key, is_valid_openai_key
+from models import CreditMode, Role, Status, UsageLog, User
 from security import (
     as_utc,
     create_access_token,
@@ -90,7 +92,7 @@ class UserOut(BaseModel):
     reviewed_at: datetime | None
     last_login_at: datetime | None
     credit_mode: str
-    yearly_token_cap: int | None
+    yearly_cap_usd: float | None
     has_own_key: bool
     api_key_last4: str | None
 
@@ -99,7 +101,7 @@ class UserOut(BaseModel):
         return cls(
             id=user.id, email=user.email, name=user.name, department=user.department, role=user.role,
             status=user.status, created_at=user.created_at, reviewed_at=user.reviewed_at,
-            last_login_at=user.last_login_at, credit_mode=user.credit_mode, yearly_token_cap=user.yearly_token_cap,
+            last_login_at=user.last_login_at, credit_mode=user.credit_mode, yearly_cap_usd=user.yearly_cap_usd,
             has_own_key=bool(user.encrypted_api_key), api_key_last4=user.api_key_last4,
         )
 
@@ -112,6 +114,22 @@ class RoleUpdate(BaseModel):
     def valid_role(cls, value: str) -> str:
         if value not in Role.ALL:
             raise ValueError(f"role must be one of {Role.ALL}")
+        return value
+
+
+class ApiKeyRequest(BaseModel):
+    api_key: str = Field(max_length=300)
+
+
+class CreditUpdate(BaseModel):
+    credit_mode: str
+    yearly_cap_usd: float | None = Field(default=None, ge=0, le=100000)
+
+    @field_validator("credit_mode")
+    @classmethod
+    def valid_mode(cls, value: str) -> str:
+        if value not in CreditMode.ALL:
+            raise ValueError(f"credit_mode must be one of {CreditMode.ALL}")
         return value
 
 
@@ -189,6 +207,35 @@ def change_password(req: ChangePasswordRequest, user: User = Depends(get_current
     return {"message": "Password changed. Please sign in again.", "access_token": create_access_token(user)}
 
 
+# --- My credits and own API key --------------------------------------------------------
+@app.get("/api/me/credits")
+def my_credits(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return credit_status(db, user)
+
+
+@app.put("/api/me/api-key")
+def save_api_key(req: ApiKeyRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    key = req.api_key.strip()
+    if not is_valid_openai_key(key):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="That does not look like an OpenAI API key (it should start with sk-)")
+    try:
+        user.encrypted_api_key = encrypt_key(key)
+    except KeyVaultError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+    user.api_key_last4 = key[-4:]
+    db.commit()
+    logger.info("User %s saved an own API key", user.id)
+    return credit_status(db, user)
+
+
+@app.delete("/api/me/api-key")
+def delete_api_key(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    user.encrypted_api_key = None
+    user.api_key_last4 = None
+    db.commit()
+    return credit_status(db, user)
+
+
 # --- Admin -------------------------------------------------------------------------
 def _target(db: Session, user_id: int) -> User:
     user = db.get(User, user_id)
@@ -262,6 +309,52 @@ def set_role(user_id: int, req: RoleUpdate, admin: User = Depends(require_admin)
     user.token_version += 1
     db.commit()
     return UserOut.of(user)
+
+
+@app.patch("/api/admin/users/{user_id}/credits")
+def set_credits(user_id: int, req: CreditUpdate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    user = _target(db, user_id)
+    user.credit_mode = req.credit_mode
+    if req.credit_mode == CreditMode.OUR_KEY_CAPPED:
+        user.yearly_cap_usd = req.yearly_cap_usd if req.yearly_cap_usd is not None else config.DEFAULT_YEARLY_CAP_USD
+    db.commit()
+    logger.info("Admin %s set credits for user %s: %s %s", admin.id, user.id, user.credit_mode, user.yearly_cap_usd)
+    return {"user": UserOut.of(user), "credits": credit_status(db, user)}
+
+
+@app.get("/api/admin/usage")
+def usage_overview(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Lab-credit spend this credit year: total, budget and per professor."""
+    start = credit_year_start()
+    rows = db.execute(
+        select(
+            UsageLog.user_id,
+            func.count(UsageLog.id),
+            func.coalesce(func.sum(case((UsageLog.used_own_key.is_(False), UsageLog.cost_usd), else_=0.0)), 0.0),
+            func.coalesce(func.sum(UsageLog.input_tokens), 0),
+            func.coalesce(func.sum(UsageLog.output_tokens), 0),
+        ).where(UsageLog.created_at >= start).group_by(UsageLog.user_id)
+    ).all()
+    users = {u.id: u for u in db.scalars(select(User).where(User.id.in_([r[0] for r in rows])))} if rows else {}
+    per_user = [{
+        "user_id": user_id,
+        "email": users[user_id].email if user_id in users else None,
+        "credit_mode": users[user_id].credit_mode if user_id in users else None,
+        "yearly_cap_usd": users[user_id].yearly_cap_usd if user_id in users else None,
+        "runs": runs,
+        "lab_cost_usd": round(float(cost), 4),
+        "input_tokens": int(tokens_in),
+        "output_tokens": int(tokens_out),
+    } for user_id, runs, cost, tokens_in, tokens_out in rows]
+    total = lab_spend_this_year(db)
+    budget = config.TOTAL_CREDIT_BUDGET_USD or None
+    return {
+        "credit_year_start": start.date().isoformat(),
+        "lab_spend_usd": total,
+        "budget_usd": budget,
+        "budget_remaining_usd": round(budget - total, 4) if budget else None,
+        "per_user": sorted(per_user, key=lambda row: row["lab_cost_usd"], reverse=True),
+    }
 
 
 if __name__ == "__main__":

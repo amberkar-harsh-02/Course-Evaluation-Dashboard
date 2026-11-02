@@ -1,7 +1,7 @@
 # Course Eval App — backend
 
 Backend for the merged site, where professors register, get approved by the admin, run analyses and keep their
-reports. This folder is built in phases. **Phase 1 (this version): accounts, registration and admin approval.**
+reports. This folder is built in phases. **Done: Phase 1 (accounts, registration, admin approval) and Phase 2 (credits and own API keys).**
 
 ## Run it locally
 
@@ -16,7 +16,8 @@ python app.py                      # http://127.0.0.1:8010  — API docs at /doc
 
 With `DATABASE_URL` empty, data goes to `courseeval_dev.db` in this folder (git-ignored). In production set
 `DATABASE_URL` to Postgres, e.g. `postgresql+psycopg2://courseeval:<password>@localhost:5432/courseeval`.
-Tables are created automatically on start.
+Tables are created automatically on start, and columns added by later phases are added to an existing
+database automatically.
 
 ## How accounts work
 
@@ -55,9 +56,32 @@ Tables are created automatically on start.
 - The admin cannot disable themselves or remove their own admin role.
 - There are no default or seeded accounts. The first admin is created with `manage.py create-admin`.
 
+## Credits and API keys (Phase 2)
+
+The admin chooses one credit mode per professor (`PATCH /api/admin/users/{id}/credits`):
+
+| Mode | Key used | Limit |
+|---|---|---|
+| `our_key_capped` (default) | lab OpenAI key | `yearly_cap_usd` per credit year (default $20, `DEFAULT_YEARLY_CAP_USD`) |
+| `our_key_unlimited` | lab OpenAI key | none (only the optional overall `TOTAL_CREDIT_BUDGET_USD`) |
+| `own_key` | the professor's own OpenAI key | none; it costs the lab nothing |
+
+- **Professors' own keys:** they save or remove their key with `PUT` / `DELETE /api/me/api-key`.
+  - The key is encrypted with `KEY_ENCRYPTION_SECRET` (Fernet).
+  - Only the last 4 characters are ever shown.
+  - It is decrypted in memory just before a run.
+- **Credit status:** `GET /api/me/credits` shows a professor their mode, cap, dollars used and remaining, and allowed models.
+- **Usage overview:** `GET /api/admin/usage` shows lab spend this credit year, the budget left, and spend per professor.
+- **Local model:** the local Mac Studio model is admin-only. Anthropic is no longer supported.
+- **Usage tracking:** every run's real token use comes from OpenAI's response. The pipeline reports it in
+  `metadata.usage`, and `credits.record_usage()` stores it in `usage_log`. Cost uses the `OPENAI_PRICE_*`
+  settings in `NLP/settings.py`; keep them in line with OpenAI's price page.
+- **Run checks:** before a run, `credits.plan_run()` checks the mode, cap, overall budget and key, and refuses
+  with a clear message. A run that starts under the cap can finish slightly over it.
+
 ## Database tables
 
-- `users`: accounts, plus the Phase 2 credit settings (credit mode, yearly cap, encrypted own API key)
+- `users`: accounts, plus credit settings (credit mode, yearly dollar cap, encrypted own API key)
 - `uploads`, `reports`, `usage_log`: created now, used from Phase 2/3 on
 
 ## Tests
