@@ -1,4 +1,4 @@
-"""Merged Course Eval app — Phase 1: accounts, registration and admin approval.
+"""Merged Course Eval app: accounts and approval (Phase 1), credits (Phase 2), analyses and reports (Phase 3).
 
 Run:  python app.py   (or: uvicorn app:app --port 8010)
 """
@@ -7,8 +7,9 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import case, func, select
@@ -16,9 +17,10 @@ from sqlalchemy.orm import Session
 
 import config
 from database import get_db, init_db
-from credits import credit_status, lab_spend_this_year, credit_year_start
+import analysis
+from credits import credit_status, lab_spend_this_year, credit_year_start, plan_run
 from keyvault import KeyVaultError, encrypt_key, is_valid_openai_key
-from models import CreditMode, Role, Status, UsageLog, User
+from models import CreditMode, Report, Role, Status, Upload, UsageLog, User
 from security import (
     as_utc,
     create_access_token,
@@ -46,7 +48,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=config.ALLOWED_ORIGINS,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -95,6 +97,7 @@ class UserOut(BaseModel):
     yearly_cap_usd: float | None
     has_own_key: bool
     api_key_last4: str | None
+    report_count: int | None = None
 
     @classmethod
     def of(cls, user: User) -> "UserOut":
@@ -271,7 +274,13 @@ def list_users(
         if status_filter not in Status.ALL:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"status must be one of {Status.ALL}")
         query = query.where(User.status == status_filter)
-    return [UserOut.of(u) for u in db.scalars(query)]
+    counts = dict(db.execute(select(Report.owner_id, func.count()).group_by(Report.owner_id)).all())
+    users = []
+    for u in db.scalars(query):
+        row = UserOut.of(u)
+        row.report_count = counts.get(u.id, 0)  # number only; report contents stay private
+        users.append(row)
+    return users
 
 
 @app.get("/api/admin/summary")
@@ -355,6 +364,116 @@ def usage_overview(admin: User = Depends(require_admin), db: Session = Depends(g
         "budget_remaining_usd": round(budget - total, 4) if budget else None,
         "per_user": sorted(per_user, key=lambda row: row["lab_cost_usd"], reverse=True),
     }
+
+
+# --- Analyses and reports (Phase 3) ----------------------------------------------------
+class ReportSummary(BaseModel):
+    id: int
+    course: str
+    term: str | None
+    model: str | None
+    overall_score: float | None
+    created_at: datetime
+    original_filename: str | None
+
+
+def _own_report(db: Session, user: User, report_id: int) -> Report:
+    report = db.get(Report, report_id)
+    # Reports are private to their owner (admins included), so a missing and a foreign report look the same
+    if report is None or report.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+    return report
+
+
+@app.post("/api/analyses", status_code=status.HTTP_202_ACCEPTED)
+def start_analysis(
+    file: UploadFile = File(...),
+    model_choice: str = Form("openai"),
+    course: str | None = Form(default=None, max_length=200),
+    term: str | None = Form(default=None, max_length=100),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    original_name = Path(file.filename or "upload").name
+    if Path(original_name).suffix.lower() not in config.ALLOWED_UPLOAD_TYPES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Upload a {', '.join(config.ALLOWED_UPLOAD_TYPES)} file")
+    content = file.file.read(config.MAX_UPLOAD_MB * 1024 * 1024 + 1)
+    if len(content) > config.MAX_UPLOAD_MB * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=f"Files are limited to {config.MAX_UPLOAD_MB} MB")
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The file is empty")
+
+    plan = plan_run(db, user, model_choice)  # refuses with a clear reason (cap reached, no own key, ...)
+    upload = analysis.store_upload(db, user, original_name, content)
+    course_name = (course or "").strip() or Path(original_name).stem
+    job_id = analysis.submit(user, upload, plan, course_name, (term or "").strip() or None)
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.get("/api/analyses")
+def my_analyses(user: User = Depends(get_current_user)):
+    return analysis.list_jobs(user.id)
+
+
+@app.get("/api/analyses/{job_id}")
+def analysis_status(job_id: str, user: User = Depends(get_current_user)):
+    job = analysis.get_job(job_id, user.id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    return job
+
+
+@app.get("/api/reports")
+def my_reports(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = db.execute(
+        select(Report, Upload.original_filename)
+        .outerjoin(Upload, Upload.id == Report.upload_id)
+        .where(Report.owner_id == user.id)
+        .order_by(Report.created_at.desc())
+    ).all()
+    return [ReportSummary(id=r.id, course=r.course, term=r.term, model=r.model, overall_score=r.overall_score,
+                          created_at=r.created_at, original_filename=name) for r, name in rows]
+
+
+@app.get("/api/reports/{report_id}")
+def get_report(report_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    report = _own_report(db, user, report_id)
+    return {"id": report.id, "course": report.course, "term": report.term, "created_at": report.created_at,
+            "report": report.report_json}
+
+
+class ReportUpdate(BaseModel):
+    report: dict
+
+
+@app.put("/api/reports/{report_id}")
+def save_report(report_id: int, req: ReportUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Save a report the professor edited in the browser (for example ignored comments and recalculated scores)."""
+    report = _own_report(db, user, report_id)
+    if not isinstance(req.report.get("categories"), list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This does not look like a course report")
+    report.report_json = req.report
+    score = req.report.get("overall_score")
+    report.overall_score = float(score) if isinstance(score, (int, float)) else None
+    db.commit()
+    return {"id": report.id, "overall_score": report.overall_score}
+
+
+@app.delete("/api/reports/{report_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_report(report_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Delete a report and, when no other report uses it, the uploaded file it came from."""
+    report = _own_report(db, user, report_id)
+    upload = db.get(Upload, report.upload_id) if report.upload_id else None
+    for entry in db.scalars(select(UsageLog).where(UsageLog.report_id == report.id)):
+        entry.report_id = None  # keep the spending record
+    db.delete(report)
+    db.flush()
+    if upload is not None and not db.scalar(select(func.count()).select_from(Report).where(Report.upload_id == upload.id)):
+        Path(upload.stored_path).unlink(missing_ok=True)
+        db.delete(upload)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 if __name__ == "__main__":

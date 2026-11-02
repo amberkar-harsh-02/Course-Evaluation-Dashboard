@@ -9,3 +9,5 @@ email-validator>=2.1
 python-dotenv>=1.0
 pydantic>=2.7
 cryptography>=42
+requests>=2.31
+python-multipart>=0.0.9

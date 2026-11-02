@@ -1,7 +1,7 @@
 # Course Eval App — backend
 
 Backend for the merged site, where professors register, get approved by the admin, run analyses and keep their
-reports. This folder is built in phases. **Done: Phase 1 (accounts, registration, admin approval) and Phase 2 (credits and own API keys).**
+reports. This folder is built in phases. **Done: Phase 1 (accounts, registration, admin approval), Phase 2 (credits and own API keys) and Phase 3 (uploads, analyses, reports).** See [../README.md](../README.md) for the whole app.
 
 ## Run it locally
 
@@ -79,10 +79,30 @@ The admin chooses one credit mode per professor (`PATCH /api/admin/users/{id}/cr
 - **Run checks:** before a run, `credits.plan_run()` checks the mode, cap, overall budget and key, and refuses
   with a clear message. A run that starts under the cap can finish slightly over it.
 
+## Analyses and reports (Phase 3)
+
+| Method | Path | What it does |
+|---|---|---|
+| POST | `/api/analyses` | Form fields: `file` (PDF, Word, Excel or CSV, max `MAX_UPLOAD_MB`), `model_choice` (`openai`; `local` for admins), optional `course` and `term`. It checks the credit plan first, stores the file under `STORAGE_DIR`, and returns a `job_id`. |
+| GET | `/api/analyses/{job_id}` | Progress (`queued`, `running`, `complete`, `failed`; `stage`, `done`/`total`, `report_id`, `error`) |
+| GET | `/api/reports` | The signed-in user's reports |
+| GET / PUT / DELETE | `/api/reports/{id}` | Open, save edits (e.g. ignored comments), or delete a report and its uploaded file. Owner only. |
+
+How a run works:
+1. The job sends the file to the OCR server (`OCR_URL`).
+2. It runs `NLP/main.py`'s `analysis_pipeline` in this process, with the professor's own key when their plan
+   says so.
+3. It saves the report and records the token cost in `usage_log`.
+
+Jobs run one at a time. Their progress is kept in memory, so a server restart drops queued jobs, but saved
+reports are kept.
+
 ## Database tables
 
 - `users`: accounts, plus credit settings (credit mode, yearly dollar cap, encrypted own API key)
-- `uploads`, `reports`, `usage_log`: created now, used from Phase 2/3 on
+- `uploads`: original files (stored on disk under `STORAGE_DIR`)
+- `reports`: one per analysis, with the full report JSON
+- `usage_log`: tokens and lab cost per run
 
 ## Tests
 

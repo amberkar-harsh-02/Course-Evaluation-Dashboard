@@ -42,6 +42,15 @@ CREDIT_YEAR_START = _env("CREDIT_YEAR_START", "01-01")
 # Losing it makes stored keys unreadable (professors would re-enter them).
 KEY_ENCRYPTION_SECRET = _env("KEY_ENCRYPTION_SECRET")
 
+# --- Analyses (Phase 3) ---
+# The NLP pipeline (NLP/main.py) runs inside this server; the OCR server extracts comments from uploads
+NLP_DIR = Path(_env("NLP_DIR", str((BASE_DIR.parent.parent / "NLP").resolve())))
+OCR_URL = _env("OCR_URL", "http://127.0.0.1:8000/api/extract-text")
+# Uploaded evaluation files are kept here (one folder per user)
+STORAGE_DIR = Path(_env("STORAGE_DIR", str(BASE_DIR / "storage")))
+MAX_UPLOAD_MB = int(_env("MAX_UPLOAD_MB", "25"))
+ALLOWED_UPLOAD_TYPES = (".pdf", ".docx", ".xlsx", ".xls", ".csv")
+
 ALLOWED_ORIGINS =[o.strip() for o in _env("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if o.strip()]
 API_HOST = _env("API_HOST", "127.0.0.1")
 API_PORT = int(_env("API_PORT", "8010"))
