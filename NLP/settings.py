@@ -24,8 +24,11 @@ OLLAMA_URL = _env("OLLAMA_URL", "http://10.9.144.10:8001/api/generate")
 OLLAMA_MODEL = _env("OLLAMA_MODEL", "qwen35b:latest")
 OPENAI_URL = _env("OPENAI_URL", "https://api.openai.com/v1/chat/completions")
 OPENAI_MODEL = _env("OPENAI_MODEL", "gpt-5.6-terra")
-ANTHROPIC_URL = _env("ANTHROPIC_URL", "https://api.anthropic.com/v1/messages")
-ANTHROPIC_MODEL = _env("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+# OpenAI list prices in USD per 1M tokens, used to estimate what each run cost.
+# Check https://openai.com/api/pricing and update these when prices change.
+OPENAI_PRICE_INPUT_PER_M = float(_env("OPENAI_PRICE_INPUT_PER_M", "2.00"))
+OPENAI_PRICE_CACHED_INPUT_PER_M = float(_env("OPENAI_PRICE_CACHED_INPUT_PER_M", "0.20"))
+OPENAI_PRICE_OUTPUT_PER_M = float(_env("OPENAI_PRICE_OUTPUT_PER_M", "12.00"))
 
 # OCR / text-extraction server used by api.py
 OCR_URL = _env("OCR_URL", "http://127.0.0.1:8000/api/extract-text")
@@ -58,7 +61,6 @@ PROMPT_VERSION = "2026-10-08.4"
 MODEL_IDS = {
     "local": OLLAMA_MODEL,
     "openai": OPENAI_MODEL,
-    "anthropic": ANTHROPIC_MODEL,
 }
 
 
@@ -67,5 +69,5 @@ def model_id_for(model_choice: str) -> str:
 
 
 def max_parallel_calls(model_choice: str) -> int:
-    limit = MAX_PARALLEL_API_CALLS if model_choice in ("openai", "anthropic") else MAX_PARALLEL_LOCAL_CALLS
+    limit = MAX_PARALLEL_API_CALLS if model_choice == "openai" else MAX_PARALLEL_LOCAL_CALLS
     return max(1, limit)

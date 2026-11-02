@@ -23,7 +23,7 @@ Llama3, Gemma, roBERTa and DistilroBERTa (see [experiments.md](experiments.md)).
 python -m venv .venv
 .venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-copy .env.example .env          # then fill in API keys if you use OpenAI or Anthropic
+copy .env.example .env          # then set OPENAI_API_KEY if you use OpenAI
 python api.py                   # http://127.0.0.1:8001
 ```
 
@@ -37,7 +37,7 @@ set `NLP_API_KEY` so those requests must carry an `X-API-Key` header.
 
 | Method | Path | What it does |
 |---|---|---|
-| POST | `/api/analyze` | Form fields `file` and `model_choice` (`local`, `openai`, `anthropic`). Processes the file and returns the finished report. Used by the admin dashboard. |
+| POST | `/api/analyze` | Form fields `file` and `model_choice` (`local`, `openai`). Processes the file and returns the finished report. Used by the admin dashboard. |
 | POST | `/api/jobs` | Same form fields, but returns a `job_id` right away and processes the file in the background. |
 | GET | `/api/jobs/{job_id}` | Job status (`queued`, `running`, `complete`, `failed`) with `stage` and `done`/`total` progress. |
 | GET | `/api/jobs` | All jobs since the server started. |
@@ -55,7 +55,10 @@ set `NLP_API_KEY` so those requests must carry an `X-API-Key` header.
 
 - `local` (default): Ollama `/api/generate` at `OLLAMA_URL` with model `OLLAMA_MODEL` (currently `qwen35b:latest` on the lab Mac Studio).
 - `openai`: Chat Completions with structured outputs. Needs `OPENAI_API_KEY` in `.env`.
-- `anthropic`: Messages API with a forced tool call. Needs `ANTHROPIC_API_KEY` in `.env`.
+
+Every report records its token use and estimated cost in `metadata.usage`, using the prices in `settings.py`
+(`OPENAI_PRICE_*`). `analysis_pipeline(..., api_key=...)` runs with a professor's own OpenAI key instead of the
+shared one; if OpenAI rejects the key or the account has no credit, the run stops with `LLMAccountError`.
 
 Model IDs live in `settings.py` and are written into every report (`metadata.model_id`).
 

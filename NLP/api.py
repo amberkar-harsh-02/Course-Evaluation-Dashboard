@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 from main import analysis_pipeline
+from llm_context import LLMAccountError
 import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -51,7 +52,7 @@ HISTORY_FILE = BASE_DIR / "history.json"
 INPUT_DIR.mkdir(parents=True, exist_ok=True)
 RESULT_DIR.mkdir(parents=True, exist_ok=True)
 
-MODEL_CHOICES = {"local", "openai", "anthropic"}
+MODEL_CHOICES = {"local", "openai"}
 SAFE_COURSE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._()&,'-]*")
 
 _history_lock = threading.Lock()
@@ -183,6 +184,9 @@ def process_upload(filename: str, content: bytes, model_choice: str, progress=No
             extraction={"parser": ocr_data.get("parser", ""), "warnings": ocr_data.get("warnings", [])},
             progress=progress,
         )
+    except LLMAccountError as e:
+        record(f"AI account problem: {e}")
+        raise ProcessingError(400, str(e))
     except Exception as e:
         logger.exception("Pipeline failed for %s", filename)
         record(f"Pipeline Failed: {e}")

@@ -126,7 +126,7 @@ Outputs are written to `results/visualizations/`.
 
 ## Main Pipeline
 
-`main.py` is the combined production pipeline (local Qwen through Ollama, OpenAI, or Anthropic). It classifies comments, scores each assigned topic, summarizes each topic, and writes a combined report. See [README.md](README.md) for details.
+`main.py` is the combined production pipeline (local Qwen through Ollama, or OpenAI). It classifies comments, scores each assigned topic, summarizes each topic, and writes a combined report. See [README.md](README.md) for details.
 
 ```bash
 python3 main.py

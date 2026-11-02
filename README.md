@@ -24,7 +24,7 @@ comment.
 │ :5173              │   report    └────────┬─────────┘ comments│ filtering    │
 └────────────────────┘                      │ LLM calls         └──────────────┘
                                             ▼
-                         Ollama (Qwen) / OpenAI / Anthropic
+                         Ollama (Qwen) / OpenAI
 
   report .json ──(shared with each professor)──► ProfessorPortal/frontend  (served at /course-eval/)
 ```
@@ -40,7 +40,7 @@ comment.
 
 ## Setup
 
-Requirements: Python 3.10+, Node 18+, and either an Ollama server or an OpenAI/Anthropic API key.
+Requirements: Python 3.10+, Node 18+, and either an Ollama server or an OpenAI API key.
 
 ```bash
 git clone https://github.com/amberkar-harsh-02/Course-Evaluation-Dashboard.git
@@ -65,7 +65,7 @@ The classifier files (`comment_classifier.pkl`, `tfidf_vectorizer.pkl`) are incl
 
 ```bash
 cd NLP
-copy .env.example .env            # add OPENAI_API_KEY / ANTHROPIC_API_KEY if needed
+copy .env.example .env            # add OPENAI_API_KEY if needed
 python api.py                     # http://127.0.0.1:8001
 ```
 

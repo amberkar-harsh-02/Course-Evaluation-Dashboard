@@ -13,6 +13,8 @@ import requests
 from data import SCORING_RUBRIC, TOPIC_DEFS, TOPIC_KEYS
 import settings
 import llm_cache
+import contextvars
+from llm_context import LLMAccountError, current_meter, llm_run, openai_key_override
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
@@ -242,15 +244,19 @@ def call_llm(prompt: str, model_choice: str = "local", temperature: float = 0.1,
     """Send one prompt to the chosen model and return its text.
 
     With `schema`, the provider is asked to enforce that JSON schema (OpenAI structured outputs,
-    Anthropic forced tool call, Ollama `format`). Returned text is then always the JSON object.
+    Ollama `format`). Returned text is then always the JSON object.
     `json_mode=False` asks for plain prose (used for topic summaries).
     Answers are cached in SQLite (settings.LLM_CACHE), keyed by provider, model and the full request.
+    Token usage is added to the current run's UsageMeter (see llm_context.py); cache hits cost nothing.
     """
     key = None
     if settings.LLM_CACHE:
         key = llm_cache.cache_key(model_choice, settings.model_id_for(model_choice), prompt, schema, json_mode, temperature)
         cached = llm_cache.get(settings.LLM_CACHE_PATH, key)
         if cached is not None:
+            meter = current_meter.get()
+            if meter is not None:
+                meter.add_cache_hit()
             return cached
     answer = _request_llm(prompt, model_choice, temperature, timeout, max_retries, schema, json_mode)
     if key is not None and answer:
@@ -258,12 +264,31 @@ def call_llm(prompt: str, model_choice: str = "local", temperature: float = 0.1,
     return answer
 
 
+def _record_usage(model_choice: str, input_tokens: Any, cached_tokens: Any, output_tokens: Any) -> None:
+    meter = current_meter.get()
+    if meter is not None:
+        meter.add(model_choice, input_tokens or 0, cached_tokens or 0, output_tokens or 0)
+
+
+def _raise_for_account_problem(response: requests.Response) -> None:
+    """Bad key or no credit: stop the whole run instead of failing every comment one by one."""
+    if response.status_code in (401, 403):
+        raise LLMAccountError("The OpenAI API key was rejected. Check the key and try again.")
+    if response.status_code == 429:
+        try:
+            code = (response.json().get("error") or {}).get("code")
+        except ValueError:
+            code = None
+        if code == "insufficient_quota":
+            raise LLMAccountError("The OpenAI account has no credit left.")
+
+
 def _request_llm(prompt: str, model_choice: str, temperature: float, timeout: int, max_retries: int, schema: dict[str, Any] | None, json_mode: bool) -> str:
     last_error: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
             if model_choice == "openai":
-                api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+                api_key = (openai_key_override.get() or os.environ.get("OPENAI_API_KEY", "")).strip()
                 body: dict[str, Any] = {
                     "model": settings.OPENAI_MODEL,
                     "messages": [{"role": "user", "content": prompt}],
@@ -277,55 +302,29 @@ def _request_llm(prompt: str, model_choice: str, temperature: float, timeout: in
                     json=body,
                     timeout=max(timeout, 180),
                 )
+                _raise_for_account_problem(response)
                 response.raise_for_status()
-                return response.json()["choices"][0]["message"]["content"]
+                data = response.json()
+                usage = data.get("usage") or {}
+                _record_usage("openai", usage.get("prompt_tokens"), (usage.get("prompt_tokens_details") or {}).get("cached_tokens"), usage.get("completion_tokens"))
+                return data["choices"][0]["message"]["content"]
 
-            elif model_choice == "anthropic":
-                api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-                body = {
-                    "model": settings.ANTHROPIC_MODEL,
-                    "max_tokens": 2048,
-                    "temperature": temperature,
-                }
-                if schema is not None:
-                    body["messages"] = [{"role": "user", "content": prompt}]
-                    body["tools"] = [{"name": "record_analysis", "description": "Record the analysis of the comment.", "input_schema": schema}]
-                    body["tool_choice"] = {"type": "tool", "name": "record_analysis"}
-                else:
-                    suffix = "\n\nRespond strictly with JSON format." if json_mode else ""
-                    body["messages"] = [{"role": "user", "content": prompt + suffix}]
-                response = requests.post(
-                    settings.ANTHROPIC_URL,
-                    headers={
-                        "x-api-key": api_key,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json"
-                    },
-                    json=body,
-                    timeout=timeout,
-                )
-                response.raise_for_status()
-                content = response.json()["content"]
-                tool_use = next((block for block in content if block.get("type") == "tool_use"), None)
-                if tool_use is not None:
-                    return json.dumps(tool_use["input"])
-                return next((block["text"] for block in content if block.get("type") == "text"), "")
-
-            else:
-                # Local Ollama (lab Mac Studio). Sampling settings go under "options".
-                body = {
-                    "model": settings.OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {"temperature": temperature},
-                }
-                if schema is not None:
-                    body["format"] = schema
-                elif json_mode:
-                    body["format"] = "json"
-                response = requests.post(settings.OLLAMA_URL, json=body, timeout=timeout)
-                response.raise_for_status()
-                return response.json().get("response", "")
+            # Local Ollama (lab Mac Studio). Sampling settings go under "options".
+            body = {
+                "model": settings.OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": temperature},
+            }
+            if schema is not None:
+                body["format"] = schema
+            elif json_mode:
+                body["format"] = "json"
+            response = requests.post(settings.OLLAMA_URL, json=body, timeout=timeout)
+            response.raise_for_status()
+            data = response.json()
+            _record_usage("local", data.get("prompt_eval_count"), 0, data.get("eval_count"))
+            return data.get("response", "")
 
         except requests.RequestException as exc:
             last_error = exc
@@ -525,6 +524,8 @@ def analyze_comment(comment: str, classification_examples: list[dict[str, Any]] 
         try:
             parsed = extract_json_object(call_llm(prompt, model_choice=model_choice, schema=ANALYSIS_SCHEMA))
             break
+        except LLMAccountError:
+            raise
         except Exception as exc:
             last_error = exc
     if parsed is None:
@@ -612,6 +613,8 @@ def classify_comment(comment: str, classification_examples: list[dict[str, Any]]
         try:
             parsed = extract_json_object(call_llm(prompt, model_choice=model_choice))
             break
+        except LLMAccountError:
+            raise
         except Exception as exc:
             last_error = exc
 
@@ -688,6 +691,8 @@ def score_comment_topic(comment: str, topic: str, sentiment_examples: list[dict[
         try:
             parsed = extract_json_object(call_llm(prompt, model_choice=model_choice))
             break
+        except LLMAccountError:
+            raise
         except Exception as exc:
             last_error = exc
     else:
@@ -787,6 +792,8 @@ def summarize_topic(topic: str, comments: list[dict[str, Any]], average_score: f
 
     try:
         summary = call_llm(prompt, model_choice=model_choice, temperature=0.2, timeout=120, json_mode=False).strip()
+    except LLMAccountError:
+        raise
     except Exception as exc:
         return f"{exact_prefix} Themes unavailable due to model error."
 
@@ -1021,7 +1028,17 @@ def prepare_comment_items(raw_comments: list[Any], dedupe_exact_comments: bool =
         items.append({"text": text, "question": question, "non_teaching_question": non_teaching})
     return items, duplicates
 
-def analysis_pipeline(course_id: str, raw_comments: list[Any], output_dir: Path | None = None, write_files: bool = True, dedupe_exact_comments: bool = True, use_rag: bool = True, model_choice: str = "local", quantitative: list[dict[str, Any]] | None = None, extraction: dict[str, Any] | None = None, progress: Callable[[str, int, int], None] | None = None) -> dict[str, Any]:
+def analysis_pipeline(course_id: str, raw_comments: list[Any], output_dir: Path | None = None, write_files: bool = True, dedupe_exact_comments: bool = True, use_rag: bool = True, model_choice: str = "local", quantitative: list[dict[str, Any]] | None = None, extraction: dict[str, Any] | None = None, progress: Callable[[str, int, int], None] | None = None, api_key: str | None = None) -> dict[str, Any]:
+    """Analyze comments and build the report.
+
+    `api_key` makes this run use that OpenAI key (a professor's own key) instead of OPENAI_API_KEY.
+    Token usage and estimated cost are reported in metadata["usage"].
+    Raises LLMAccountError when the provider rejects the key or the account has no credit.
+    """
+    with llm_run(api_key):
+        return _analysis_pipeline(course_id, raw_comments, output_dir, write_files, dedupe_exact_comments, use_rag, model_choice, quantitative, extraction, progress)
+
+def _analysis_pipeline(course_id: str, raw_comments: list[Any], output_dir: Path | None, write_files: bool, dedupe_exact_comments: bool, use_rag: bool, model_choice: str, quantitative: list[dict[str, Any]] | None, extraction: dict[str, Any] | None, progress: Callable[[str, int, int], None] | None) -> dict[str, Any]:
     output_dir = output_dir or BASE_DIR / "results" / "combined"
     start_time = time.time()
     input_comment_count = len(raw_comments)
@@ -1046,6 +1063,8 @@ def analysis_pipeline(course_id: str, raw_comments: list[Any], output_dir: Path 
             if settings.PIPELINE_MODE == "two_step":
                 return assess_comment_two_step(item["text"], classification_examples, sentiment_examples, model_choice, item["question"])
             return analyze_comment(item["text"], classification_examples, sentiment_examples, model_choice=model_choice, question=item["question"])
+        except LLMAccountError:
+            raise
         except Exception as exc:  # never let one comment sink the whole report
             logger.exception("Assessment failed for one comment")
             return {"status": "model_error", "reasoning": f"Unexpected error: {exc}", "topic_results": [], "general_score": None}
@@ -1062,10 +1081,15 @@ def analysis_pipeline(course_id: str, raw_comments: list[Any], output_dir: Path 
     assessments: dict[int, dict[str, Any]] = {}
     notify("comments", 0, len(to_assess))
     with ThreadPoolExecutor(max_workers=settings.max_parallel_calls(model_choice)) as pool:
-        futures = {pool.submit(assess, items[index]): index for index in to_assess}
-        for done, future in enumerate(as_completed(futures), 1):
-            assessments[futures[future]] = future.result()
-            notify("comments", done, len(to_assess))
+        futures = {pool.submit(contextvars.copy_context().run, assess, items[index]): index for index in to_assess}
+        try:
+            for done, future in enumerate(as_completed(futures), 1):
+                assessments[futures[future]] = future.result()
+                notify("comments", done, len(to_assess))
+        except LLMAccountError:
+            # Bad key or no credit: drop the queued calls instead of trying every remaining comment
+            pool.shutdown(wait=True, cancel_futures=True)
+            raise
 
     for index, item in enumerate(items):
         feedback, question = item["text"], item["question"]
@@ -1126,7 +1150,7 @@ def analysis_pipeline(course_id: str, raw_comments: list[Any], output_dir: Path 
     notify("summaries", 0, len(TOPICS))
     with ThreadPoolExecutor(max_workers=settings.max_parallel_calls(model_choice)) as pool:
         summary_futures = {
-            topic: pool.submit(summarize_topic, topic, topic_comments[topic], topic_averages.get(topic), model_choice=model_choice)
+            topic: pool.submit(contextvars.copy_context().run, summarize_topic, topic, topic_comments[topic], topic_averages.get(topic), model_choice=model_choice)
             for topic in TOPICS
         }
         summaries = {}
@@ -1190,6 +1214,7 @@ def analysis_pipeline(course_id: str, raw_comments: list[Any], output_dir: Path 
             "scoring_errors": failed_score_count,
             "dropped_topic_assignments": drop_counts,
             "warnings": warnings,
+            "usage": current_meter.get().as_dict() if current_meter.get() else {},
             "runtime_seconds": round(time.time() - start_time, 2),
         },
     }

@@ -83,8 +83,7 @@ function App() {
   // 🚀 NEW: Dropdown options for the AI Models
   const modelOptions = [
     { value: 'local', label: 'Local LLM (qwen35b, Mac Studio)' },
-    { value: 'openai', label: 'OpenAI (gpt-5.6-terra)' },
-    { value: 'anthropic', label: 'Anthropic (claude-sonnet-4-6)' }
+    { value: 'openai', label: 'OpenAI (gpt-5.6-terra)' }
   ];
 
   const mockHistory = [

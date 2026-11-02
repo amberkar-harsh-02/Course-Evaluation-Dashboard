@@ -129,3 +129,23 @@ def test_jobs_report_progress_until_complete(client, monkeypatch):
     assert job["status"] == "complete", job
     assert job["overall_score"] == 5
     assert client.get("/api/jobs/unknown").status_code == 404
+
+
+def test_account_problem_returns_clear_400(client, monkeypatch, tmp_path):
+    from llm_context import LLMAccountError
+    ok_ocr(monkeypatch)
+
+    def refuse(*args, **kwargs):
+        raise LLMAccountError("The OpenAI API key was rejected. Check the key and try again.")
+
+    monkeypatch.setattr(api, "analysis_pipeline", refuse)
+    response = client.post("/api/analyze", files={"file": ("KEY.pdf", b"x")}, data={"model_choice": "openai"})
+    assert response.status_code == 400
+    assert "rejected" in response.json()["detail"]
+    history = json.loads((tmp_path / "history.json").read_text())
+    assert history[-1]["status"].startswith("AI account problem")
+
+
+def test_anthropic_is_no_longer_accepted(client):
+    response = client.post("/api/analyze", files={"file": ("a.pdf", b"x")}, data={"model_choice": "anthropic"})
+    assert response.status_code == 400

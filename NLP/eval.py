@@ -123,7 +123,7 @@ def score_metrics(gold: list[dict[str, Any]], predicted: dict[tuple[str, str], A
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--model", default="local", choices=["local", "openai", "anthropic"])
+    parser.add_argument("--model", default="local", choices=["local", "openai"])
     parser.add_argument("--no-rag", action="store_true", help="run without retrieved human examples in prompts")
     parser.add_argument("--limit", type=int, default=0, help="only evaluate the first N unique comments")
     parser.add_argument("--out", type=Path, default=BASE_DIR / "eval_runs")
