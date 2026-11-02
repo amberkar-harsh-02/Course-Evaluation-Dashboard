@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Shared building blocks for the app pages (calm, academic look; full redesign in Phase 5) */
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+  }
+  .dark body {
+    @apply bg-zinc-900 text-zinc-100;
+  }
+}
+
+@layer components {
+  .page { @apply mx-auto w-full max-w-5xl px-6 py-8; }
+  .page-title { @apply text-2xl font-semibold tracking-tight text-slate-900; }
+  .page-subtitle { @apply mt-1 text-sm text-slate-500; }
+  .card { @apply rounded-lg border border-slate-200 bg-white p-6; }
+  .label { @apply mb-1 block text-sm font-medium text-slate-700; }
+  .input { @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-700 focus:ring-1 focus:ring-blue-700 disabled:bg-slate-100; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-primary { @apply btn bg-blue-800 text-white hover:bg-blue-900; }
+  .btn-secondary { @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50; }
+  .btn-danger { @apply btn border border-red-200 bg-white text-red-700 hover:bg-red-50; }
+  .table { @apply w-full text-left text-sm; }
+  .table th { @apply border-b border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500; }
+  .table td { @apply border-b border-slate-100 px-3 py-3 align-middle; }
+  .badge { @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-medium; }
+  .notice { @apply rounded-md border px-4 py-3 text-sm; }
+  .notice-error { @apply notice border-red-200 bg-red-50 text-red-800; }
+  .notice-info { @apply notice border-blue-200 bg-blue-50 text-blue-900; }
+  .notice-success { @apply notice border-green-200 bg-green-50 text-green-800; }
+}
