@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import PropTypes from 'prop-types';
 import { scoreTone, shortName } from './model';
+import SearchField from '../components/SearchField';
 
 const BADGE = {
   low: 'bg-score-lowTint text-score-low',
@@ -52,7 +53,7 @@ export default function CommentList({ comments, topicOptions = null, selecting =
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-48 flex-1">
           <label className="label" htmlFor={`${idPrefix}-search`}>Search</label>
-          <input id={`${idPrefix}-search`} className="input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search comments" />
+          <SearchField id={`${idPrefix}-search`} value={query} onChange={setQuery} placeholder="Search comments" />
         </div>
         {topicOptions && (
           <div>
@@ -94,7 +95,7 @@ export default function CommentList({ comments, topicOptions = null, selecting =
             const checked = selecting && selected?.has(c.text);
             const tone = scoreTone(c.score);
             return (
-              <li key={c.index} className={`flex items-start gap-4 px-4 py-3.5 ${checked ? 'bg-accent-tint' : ''}`}>
+              <li key={c.index} className={`flex items-start gap-4 px-4 py-3.5 transition-colors ${checked ? 'bg-accent-tint' : ''}`}>
                 {selecting && (
                   <input
                     type="checkbox"

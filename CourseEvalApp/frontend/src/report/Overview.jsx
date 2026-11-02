@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import {
   Bar, BarChart, CartesianGrid, Cell, LabelList, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart,
@@ -6,6 +6,9 @@ import {
 } from 'recharts';
 import { CHART_COLORS, useTheme } from '../theme';
 import { formatScore, scoreTone, shortName } from './model';
+
+// Charts skip their grow-in animation when the device asks for reduced motion
+const reduceMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 export const TONE_TEXT = { low: 'text-score-low', mid: 'text-score-mid', high: 'text-score-high', none: 'text-ink-muted' };
 
@@ -71,7 +74,7 @@ export function CategoryChart({ topics, onSelect }) {
               <XAxis type="number" domain={[0, 5]} ticks={[1, 2, 3, 4, 5]} stroke={colors.axis} fontSize={12} />
               <YAxis type="category" dataKey="name" width={118} stroke={colors.axis} fontSize={12} tickLine={false} interval={0} />
               <Tooltip cursor={{ fill: colors.grid, opacity: 0.4 }} content={<ChartTooltip colors={colors} />} />
-              <Bar dataKey="score" barSize={14} radius={[0, 2, 2, 0]} isAnimationActive={false}
+              <Bar dataKey="score" barSize={14} radius={[0, 2, 2, 0]} isAnimationActive={!reduceMotion()} animationDuration={500}
                    onClick={(row) => onSelect(row.topic)} className="cursor-pointer">
                 {data.map((row) => <Cell key={row.topic} fill={toneColor(row.score)} />)}
                 <LabelList dataKey="score" position="right" fontSize={12} fill={colors.ink}
@@ -84,7 +87,7 @@ export function CategoryChart({ topics, onSelect }) {
               <PolarAngleAxis dataKey="name" tick={{ fill: colors.axis, fontSize: 11 }} />
               <PolarRadiusAxis angle={90} domain={[0, 5]} tickCount={6} tick={false} axisLine={false} />
               <Radar dataKey="score" stroke={colors.accent} fill={colors.accent} fillOpacity={0.22} strokeWidth={2}
-                     dot={{ r: 3, fill: colors.accent }} isAnimationActive={false} />
+                     dot={{ r: 3, fill: colors.accent }} isAnimationActive={!reduceMotion()} animationDuration={500} />
               <Tooltip content={<ChartTooltip colors={colors} />} />
             </RadarChart>
           )}
@@ -99,14 +102,17 @@ CategoryChart.propTypes = { topics: PropTypes.array.isRequired, onSelect: PropTy
 function Ring({ score }) {
   const radius = 26;
   const circumference = 2 * Math.PI * radius;
-  const filled = score == null ? 0 : (score / 5) * circumference;
+  // Start empty, then fill to the score on the next frame so the stroke transition runs
+  const [shown, setShown] = useState(false);
+  useEffect(() => { const frame = requestAnimationFrame(() => setShown(true)); return () => cancelAnimationFrame(frame); }, []);
+  const filled = score == null || !shown ? 0 : (score / 5) * circumference;
   const tone = scoreTone(score);
   return (
     <div className="relative h-[72px] w-[72px]">
       <svg viewBox="0 0 64 64" className="h-full w-full -rotate-90" aria-hidden="true">
         <circle cx="32" cy="32" r={radius} fill="none" strokeWidth="5" className="stroke-line" />
         <circle cx="32" cy="32" r={radius} fill="none" strokeWidth="5" strokeLinecap="round"
-                className={TONE_TEXT[tone]} stroke="currentColor" strokeDasharray={`${filled} ${circumference}`} />
+                className={`${TONE_TEXT[tone]} transition-[stroke-dasharray] duration-700 ease-out`} stroke="currentColor" strokeDasharray={`${filled} ${circumference}`} />
       </svg>
       <span className={`num absolute inset-0 flex items-center justify-center font-serif text-lg font-medium ${TONE_TEXT[tone]}`}>
         {score == null ? '—' : score.toFixed(1)}
@@ -129,7 +135,7 @@ export function TopicCards({ topics, onSelect }) {
               type="button"
               onClick={() => onSelect(t.topic)}
               title={t.topic}
-              className={`flex h-full w-full flex-col items-center gap-2 rounded border border-line bg-paper px-3 py-4 text-center transition-colors hover:border-accent ${t.scored < 5 ? 'opacity-70' : ''}`}
+              className={`flex h-full w-full flex-col items-center gap-2 rounded border border-line bg-paper px-3 py-4 text-center transition-[border-color,box-shadow] duration-150 hover:border-accent hover:shadow-sm ${t.scored < 5 ? 'opacity-70' : ''}`}
             >
               <Ring score={t.average} />
               <span className="text-sm font-medium leading-tight text-ink">{shortName(t.topic)}</span>

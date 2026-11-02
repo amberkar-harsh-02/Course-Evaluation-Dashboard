@@ -8,6 +8,7 @@ import { CategoryChart, OverallGrade, TopicCards } from '../report/Overview';
 import TopicStats from '../report/TopicStats';
 import TopicModal from '../report/TopicModal';
 import CommentList from '../report/CommentList';
+import { useReportNav } from '../reportNav';
 
 function TopicPage({ topic, onBack, onSaveIgnored }) {
   const [selecting, setSelecting] = useState(false);
@@ -87,7 +88,20 @@ export default function ReportView() {
   }, [reportId]);
 
   const view = useMemo(() => (report ? buildView(report) : null), [report]);
+
+  // Tell the sidebar which report is open so it can list the topics; clear it when leaving the report
+  const { setOpenReport } = useReportNav();
+  useEffect(() => {
+    if (!view || !meta) return;
+    setOpenReport({
+      id: reportId, course: meta.course, term: meta.term,
+      topics: view.topics.map((t) => ({ topic: t.topic, average: t.average })),
+    });
+  }, [view, meta, reportId, setOpenReport]);
+  useEffect(() => () => setOpenReport(null), [setOpenReport]);
   const pageTopic = params.get('topic');
+  // Opening a topic from the sidebar replaces the page; start it at the top
+  useEffect(() => { window.scrollTo(0, 0); setModalTopic(null); }, [pageTopic]);
   const openPage = useCallback((topic) => { setModalTopic(null); setParams({ topic }); window.scrollTo(0, 0); }, [setParams]);
   const closeModal = useCallback(() => setModalTopic(null), []);
 

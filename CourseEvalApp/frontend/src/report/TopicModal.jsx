@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import PropTypes from 'prop-types';
 import TopicStats from './TopicStats';
 import CommentList from './CommentList';
@@ -19,11 +20,12 @@ export default function TopicModal({ topic, onClose, onOpenPage }) {
     };
   }, [onClose]);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4 sm:items-center"
+  // Rendered on <body> so page animations (which use transforms) cannot change where the fixed overlay sits
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-start justify-center animate-fade-in overflow-y-auto bg-ink/40 p-4 sm:items-center"
          onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div role="dialog" aria-modal="true" aria-labelledby="topic-modal-title"
-           className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded border border-line bg-paper shadow-xl">
+           className="flex max-h-[90vh] w-full max-w-3xl animate-scale-in flex-col rounded-md border border-line bg-paper shadow-xl">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-6 py-4">
           <h2 id="topic-modal-title" className="font-serif text-2xl font-medium text-ink">{topic.topic}</h2>
           <div className="flex items-center gap-2">
@@ -36,7 +38,8 @@ export default function TopicModal({ topic, onClose, onOpenPage }) {
           <CommentList comments={topic.comments} idPrefix="modal" emptyText="No comments were assigned to this topic." />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

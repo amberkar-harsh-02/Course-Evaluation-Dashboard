@@ -36,13 +36,13 @@ function CreditEditor({ user, onSaved }) {
 
   return (
     <div className="flex items-center gap-2">
-      <select className="input w-44 py-1" value={mode} onChange={(e) => setMode(e.target.value)}>
+      <select className="input h-8 w-44" value={mode} onChange={(e) => setMode(e.target.value)}>
         {MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
       </select>
       {mode === 'our_key_capped' && (
         <div className="flex items-center gap-1 text-sm">
           <span className="text-ink-muted">$</span>
-          <input className="input w-20 py-1 tabular-nums" type="number" min="0" step="1" value={cap} onChange={(e) => setCap(e.target.value)} />
+          <input className="input h-8 w-20 tabular-nums" type="number" min="0" step="1" value={cap} onChange={(e) => setCap(e.target.value)} />
           <span className="text-ink-muted">/yr</span>
         </div>
       )}

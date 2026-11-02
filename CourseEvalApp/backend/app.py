@@ -94,6 +94,7 @@ class UserOut(BaseModel):
     created_at: datetime
     reviewed_at: datetime | None
     last_login_at: datetime | None
+    guide_seen_at: datetime | None = None
     credit_mode: str
     yearly_cap_usd: float | None
     has_own_key: bool
@@ -105,7 +106,7 @@ class UserOut(BaseModel):
         return cls(
             id=user.id, email=user.email, name=user.name, department=user.department, role=user.role,
             status=user.status, created_at=user.created_at, reviewed_at=user.reviewed_at,
-            last_login_at=user.last_login_at, credit_mode=user.credit_mode, yearly_cap_usd=user.yearly_cap_usd,
+            last_login_at=user.last_login_at, guide_seen_at=user.guide_seen_at, credit_mode=user.credit_mode, yearly_cap_usd=user.yearly_cap_usd,
             has_own_key=bool(user.encrypted_api_key), api_key_last4=user.api_key_last4,
         )
 
@@ -198,6 +199,15 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
 
 @app.get("/api/auth/me")
 def me(user: User = Depends(get_current_user)):
+    return UserOut.of(user)
+
+
+@app.post("/api/auth/guide-seen")
+def guide_seen(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Record that the user has seen the Guide, so it no longer opens on its own."""
+    if user.guide_seen_at is None:
+        user.guide_seen_at = datetime.now(timezone.utc)
+        db.commit()
     return UserOut.of(user)
 
 

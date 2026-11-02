@@ -135,3 +135,17 @@ def test_create_admin_command_needs_no_hardcoded_password(db_session, monkeypatc
         admin = db.scalar(select(User).where(User.email == "boss@csumb.edu"))
         assert admin.role == Role.ADMIN and admin.status == Status.APPROVED
         assert admin.password_hash != "admin-pass-2026"
+
+
+def test_guide_shows_until_marked_seen(client, make_user):
+    make_user("prof@csumb.edu")
+    headers = auth_header(client, "prof@csumb.edu")
+    assert client.get("/api/auth/me", headers=headers).json()["guide_seen_at"] is None
+
+    first = client.post("/api/auth/guide-seen", headers=headers).json()["guide_seen_at"]
+    assert first is not None
+    # Seeing it again keeps the first date (SQLite drops the timezone suffix, so compare to the second)
+    again = client.post("/api/auth/guide-seen", headers=headers).json()["guide_seen_at"]
+    assert again[:19] == first[:19]
+    assert client.get("/api/auth/me", headers=headers).json()["guide_seen_at"][:19] == first[:19]
+    assert client.post("/api/auth/guide-seen").status_code == 401

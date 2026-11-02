@@ -16,7 +16,7 @@ function ScoreSpread({ distribution }) {
           <div key={i} className="flex w-9 flex-col items-center gap-1">
             <span className="num text-xs text-ink-soft">{n}</span>
             <div className="flex h-12 w-full items-end rounded-sm bg-line-soft">
-              <div className={`w-full rounded-sm ${SPREAD_BG[i]}`} style={{ height: `${n ? Math.max(8, (n / most) * 100) : 0}%`, opacity: 0.85 }} />
+              <div className={`w-full origin-bottom animate-grow-up rounded-sm ${SPREAD_BG[i]}`} style={{ height: `${n ? Math.max(8, (n / most) * 100) : 0}%`, opacity: 0.85 }} />
             </div>
             <span className="num text-xs text-ink-muted">{i + 1}</span>
           </div>

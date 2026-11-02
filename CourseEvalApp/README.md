@@ -65,6 +65,26 @@ Reports are private to their owner. The admin sees how many reports each profess
     the score and recalculates it.
   - Topics with fewer than 5 scored comments are faded and labelled "few".
   - Light and dark mode: the toggle sits in the sidebar footer and is remembered per browser.
+- **Sidebar:** when a report is open, its course appears under My reports with the topics nested below it and each
+  topic's score. Selecting one opens that topic's page (`?topic=`).
+- **Guide** (`/guide`, `pages/Guide.jsx`):
+  - It opens on its own the first time a professor signs in. `users.guide_seen_at` is null until then, and
+    `POST /api/auth/guide-seen` sets it.
+  - It is always reachable from the sidebar.
+  - It covers what the site does, step-by-step use with screenshots, the analysis description link and the feedback
+    survey link.
+  - The screenshots in `src/assets/guide/` show made-up demo data only.
+- **New analysis:**
+  - The drop zone checks the file type and size before upload.
+  - After a file is chosen, it shows a file card with Replace and Remove.
+  - While an analysis runs, a three-step progress list replaces the single bar.
+- **Motion:** short CSS animations:
+  - pages fade in
+  - the pop-up scales in
+  - rings, bars and score spreads fill
+  - the sidebar tree slides open
+
+  When the device asks for reduced motion, all animation is switched off.
 - **Score logic:** `report/model.js` holds the score recalculation used by ignore mode. It mirrors `NLP/main.py`
   and matches the pipeline exactly on all saved reports.
 - **Phones:** the sidebar becomes a top bar with a menu.
