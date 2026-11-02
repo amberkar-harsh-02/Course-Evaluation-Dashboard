@@ -3,6 +3,11 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import PropTypes from 'prop-types';
+import '@fontsource/ibm-plex-sans/400.css';
+import '@fontsource/ibm-plex-sans/500.css';
+import '@fontsource/ibm-plex-sans/600.css';
+import '@fontsource/ibm-plex-serif/400.css';
+import '@fontsource/ibm-plex-serif/500.css';
 import './index.css';
 
 import { AuthProvider, useAuth } from './auth';
@@ -19,7 +24,7 @@ import AdminUsage from './pages/AdminUsage';
 
 function RequireAuth({ children, admin = false }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="p-8 text-sm text-slate-500">Loading…</div>;
+  if (loading) return <div className="p-8 text-sm text-ink-muted">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (admin && user.role !== 'admin') return <Navigate to="/" replace />;
   return children;
@@ -40,11 +45,10 @@ createRoot(document.getElementById('root')).render(
             <Route path="new" element={<NewAnalysis />} />
             <Route path="account" element={<Account />} />
             <Route path="compare" element={<Compare />} />
+            <Route path="reports/:reportId" element={<ReportView />} />
             <Route path="admin/users" element={<RequireAuth admin><AdminUsers /></RequireAuth>} />
             <Route path="admin/usage" element={<RequireAuth admin><AdminUsage /></RequireAuth>} />
           </Route>
-          {/* The report view uses the full width, so it sits outside the sidebar layout */}
-          <Route path="/reports/:reportId" element={<RequireAuth><ReportView /></RequireAuth>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>

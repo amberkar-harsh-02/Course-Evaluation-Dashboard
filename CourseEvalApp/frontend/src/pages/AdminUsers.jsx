@@ -41,9 +41,9 @@ function CreditEditor({ user, onSaved }) {
       </select>
       {mode === 'our_key_capped' && (
         <div className="flex items-center gap-1 text-sm">
-          <span className="text-slate-500">$</span>
+          <span className="text-ink-muted">$</span>
           <input className="input w-20 py-1 tabular-nums" type="number" min="0" step="1" value={cap} onChange={(e) => setCap(e.target.value)} />
-          <span className="text-slate-500">/yr</span>
+          <span className="text-ink-muted">/yr</span>
         </div>
       )}
       {dirty && <button className="btn-secondary py-1" onClick={save}>Save</button>}
@@ -87,20 +87,20 @@ export default function AdminUsers() {
       <h1 className="page-title">Users</h1>
       <p className="page-subtitle">Approve new professors and set how each one pays for analyses. Report contents stay private to their owners.</p>
 
-      <div className="mt-6 flex gap-1 border-b border-slate-200">
+      <div className="mt-6 flex gap-1 border-b border-line">
         {TABS.map((t) => (
           <button
             key={t.value}
             onClick={() => setTab(t.value)}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm ${tab === t.value ? 'border-blue-800 font-medium text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm ${tab === t.value ? 'border-accent font-medium text-ink' : 'border-transparent text-ink-muted hover:text-ink'}`}
           >
-            {t.label}{summary[t.value] ? <span className="ml-2 rounded bg-slate-100 px-1.5 text-xs tabular-nums">{summary[t.value]}</span> : null}
+            {t.label}{summary[t.value] ? <span className="ml-2 rounded bg-line-soft px-1.5 text-xs tabular-nums">{summary[t.value]}</span> : null}
           </button>
         ))}
       </div>
 
-      {users === null && <p className="mt-6 text-sm text-slate-500">Loading…</p>}
-      {users?.length === 0 && <p className="mt-6 text-sm text-slate-500">No accounts here.</p>}
+      {users === null && <p className="mt-6 text-sm text-ink-muted">Loading…</p>}
+      {users?.length === 0 && <p className="mt-6 text-sm text-ink-muted">No accounts here.</p>}
 
       {users?.length > 0 && (
         <div className="card mt-4 overflow-x-auto p-0">
@@ -118,10 +118,11 @@ export default function AdminUsers() {
               {users.map((u) => (
                 <tr key={u.id}>
                   <td>
-                    <p className="font-medium text-slate-900">{u.name}{u.role === 'admin' && <span className="badge ml-2 bg-slate-100 text-slate-600">admin</span>}</p>
-                    <p className="text-xs text-slate-500">{u.email}{u.department ? ` · ${u.department}` : ''}</p>
+                    <p className="font-medium text-ink">{u.name}{u.role === 'admin' && <span className="badge ml-2 bg-line-soft text-ink-soft">admin</span>}</p>
+                    <p className="text-xs text-ink-muted">{u.email}</p>
+                    {u.department && <p className="text-xs text-ink-muted">{u.department}</p>}
                   </td>
-                  <td className="text-slate-600">{formatDate(u.created_at)}</td>
+                  <td className="text-ink-soft">{formatDate(u.created_at)}</td>
                   {tab === 'approved' && <td><CreditEditor key={`${u.id}-${u.credit_mode}-${u.yearly_cap_usd}`} user={u} onSaved={load} /></td>}
                   {tab === 'approved' && <td className="text-right tabular-nums">{u.report_count ?? 0}</td>}
                   <td className="space-x-2 whitespace-nowrap text-right">

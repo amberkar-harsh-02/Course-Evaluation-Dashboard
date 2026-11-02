@@ -47,6 +47,23 @@ Open http://localhost:5173/course-eval-app/ and sign in with your admin account.
 
 Reports are private to their owner. The admin sees how many reports each professor has, but not their contents.
 
+## Design (Phase 5)
+
+- **Type:** IBM Plex Serif for headings and scores, IBM Plex Sans for everything else. The fonts are bundled with
+  the site (`@fontsource`), so the site makes no requests to outside font servers.
+- **Colors:** blue-black ink on white, one accent blue for actions, and a low-to-high score scale (oxblood, slate,
+  pine). A score's color always appears next to its number. Tokens are in `frontend/tailwind.config.js`.
+- **Report screen** (`frontend/src/report/`): a topic ledger that places every teaching topic on one shared 1–5
+  rubric track.
+  - A marker shows the average, and small bars show how many comments gave each score.
+  - Opening a row shows the topic's summary, its Pace direction, and its comments, with search, filter, sort and
+    "ignore comments".
+  - Topics with fewer than 5 scored comments are faded and labelled.
+  - `?topic=Pace` on a report link opens that topic directly.
+- **Score logic:** `report/model.js` holds the score recalculation used by ignore mode. It mirrors `NLP/main.py`
+  and matches the pipeline exactly on all saved reports.
+- **Phones:** the sidebar becomes a top bar with a menu.
+
 ## Production layout (Caddy)
 
 ```

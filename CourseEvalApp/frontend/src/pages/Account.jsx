@@ -57,40 +57,40 @@ export default function Account() {
     <div className="page max-w-3xl space-y-6">
       <div>
         <h1 className="page-title">Account</h1>
-        <p className="page-subtitle">{user?.name} · {user?.email}</p>
+        <p className="page-subtitle">Signed in as {user?.name} ({user?.email})</p>
       </div>
 
       <section className="card">
-        <h2 className="text-base font-semibold text-slate-900">AI credit</h2>
+        <h2 className="font-serif text-lg font-medium text-ink">AI credit</h2>
         {credits ? (
           <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-slate-500">Plan</dt>
+              <dt className="text-ink-muted">Plan</dt>
               <dd className="mt-1 font-medium">{MODE_LABELS[credits.credit_mode]}</dd>
             </div>
             <div>
-              <dt className="text-slate-500">Used since {credits.credit_year_start}</dt>
+              <dt className="text-ink-muted">Used since {credits.credit_year_start}</dt>
               <dd className="mt-1 font-medium tabular-nums">{formatMoney(credits.spent_this_year_usd)}</dd>
             </div>
             {credits.credit_mode === 'our_key_capped' && (
               <div>
-                <dt className="text-slate-500">Left this year</dt>
+                <dt className="text-ink-muted">Left this year</dt>
                 <dd className="mt-1 font-medium tabular-nums">{formatMoney(credits.remaining_usd)} of {formatMoney(credits.yearly_cap_usd)}</dd>
               </div>
             )}
           </dl>
-        ) : <p className="mt-2 text-sm text-slate-500">Loading…</p>}
-        <p className="mt-4 text-xs text-slate-500">The plan is set by the administrator. Contact them if you need more credit.</p>
+        ) : <p className="mt-2 text-sm text-ink-muted">Loading…</p>}
+        <p className="mt-4 text-xs text-ink-muted">The plan is set by the administrator. Contact them if you need more credit.</p>
       </section>
 
       <section className="card">
-        <h2 className="text-base font-semibold text-slate-900">Your own OpenAI key</h2>
-        <p className="mt-1 text-sm text-slate-600">
+        <h2 className="font-serif text-lg font-medium text-ink">Your own OpenAI key</h2>
+        <p className="mt-1 text-sm text-ink-soft">
           Used only when your plan is &ldquo;your own OpenAI key&rdquo;. It is stored encrypted and is never shown again;
           only its last four characters are displayed.
         </p>
         {credits?.has_own_key ? (
-          <div className="mt-4 flex items-center justify-between rounded-md border border-slate-200 px-4 py-3 text-sm">
+          <div className="mt-4 flex items-center justify-between rounded border border-line px-4 py-3 text-sm">
             <span>Saved key ending in <strong className="font-mono">{credits.api_key_last4}</strong></span>
             <button className="btn-danger" onClick={removeKey}>Remove</button>
           </div>
@@ -102,7 +102,7 @@ export default function Account() {
       </section>
 
       <section className="card">
-        <h2 className="text-base font-semibold text-slate-900">Change password</h2>
+        <h2 className="font-serif text-lg font-medium text-ink">Change password</h2>
         <form onSubmit={changePassword} className="mt-4 grid gap-4 sm:grid-cols-3">
           <input className="input" type="password" autoComplete="current-password" placeholder="Current password" required value={passwords.current} onChange={(e) => setPasswords({ ...passwords, current: e.target.value })} />
           <input className="input" type="password" autoComplete="new-password" placeholder="New password" required minLength={10} value={passwords.next} onChange={(e) => setPasswords({ ...passwords, next: e.target.value })} />

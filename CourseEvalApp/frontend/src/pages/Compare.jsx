@@ -8,8 +8,8 @@ const label = (report) => report.term || report.course;
 const fmt = (value) => (value === null || value === undefined ? '—' : value.toFixed(2));
 
 function Change({ value, muted = false }) {
-  if (value === null || value === undefined) return <span className="text-slate-400">—</span>;
-  const tone = muted ? 'text-slate-400' : value > 0 ? 'text-green-700' : value < 0 ? 'text-red-700' : 'text-slate-500';
+  if (value === null || value === undefined) return <span className="text-ink-muted">—</span>;
+  const tone = muted ? 'text-ink-muted' : value > 0 ? 'text-score-high' : value < 0 ? 'text-score-low' : 'text-ink-muted';
   const sign = value > 0 ? '+' : value < 0 ? '−' : '±';
   return <span className={`tabular-nums font-medium ${tone}`}>{sign}{Math.abs(value).toFixed(2)}</span>;
 }
@@ -45,7 +45,7 @@ export default function Compare() {
       </div>
     );
   }
-  if (!data) return <div className="page text-sm text-slate-500">Loading comparison…</div>;
+  if (!data) return <div className="page text-sm text-ink-muted">Loading comparison…</div>;
 
   const { reports } = data;
   const chartRows = reports.map((report, index) => {
@@ -63,7 +63,7 @@ export default function Compare() {
   return (
     <div className="page max-w-6xl space-y-6">
       <div>
-        <Link to="/" className="text-sm text-blue-800 hover:underline">← My reports</Link>
+        <Link to="/" className="link text-sm">My reports</Link>
         <h1 className="page-title mt-2">Compare reports</h1>
         <p className="page-subtitle">
           {reports.map((r) => `${r.course}${r.term ? ` (${r.term})` : ''}`).join(' → ')}
@@ -79,15 +79,15 @@ export default function Compare() {
       {/* Headline numbers */}
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="card">
-          <p className="text-sm text-slate-500">Overall score, {label(reports[0])} → {label(reports[reports.length - 1])}</p>
+          <p className="text-sm text-ink-muted">Overall score, {label(reports[0])} → {label(reports[reports.length - 1])}</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">
             {fmt(reports[0].overall_score)} → {fmt(reports[reports.length - 1].overall_score)}
           </p>
           <p className="mt-1 text-sm"><Change value={data.overall_change} /> on a 1–5 scale</p>
         </div>
         <div className="card">
-          <p className="text-sm font-medium text-slate-700">Most improved</p>
-          {data.improved.length === 0 ? <p className="mt-2 text-sm text-slate-500">No clear improvement.</p> : (
+          <p className="text-sm font-medium text-ink-soft">Most improved</p>
+          {data.improved.length === 0 ? <p className="mt-2 text-sm text-ink-muted">No clear improvement.</p> : (
             <ul className="mt-2 space-y-1 text-sm">
               {data.improved.map((item) => (
                 <li key={item.topic} className="flex justify-between gap-3"><span>{item.topic}</span><Change value={item.change} /></li>
@@ -96,8 +96,8 @@ export default function Compare() {
           )}
         </div>
         <div className="card">
-          <p className="text-sm font-medium text-slate-700">Most declined</p>
-          {data.declined.length === 0 ? <p className="mt-2 text-sm text-slate-500">No clear decline.</p> : (
+          <p className="text-sm font-medium text-ink-soft">Most declined</p>
+          {data.declined.length === 0 ? <p className="mt-2 text-sm text-ink-muted">No clear decline.</p> : (
             <ul className="mt-2 space-y-1 text-sm">
               {data.declined.map((item) => (
                 <li key={item.topic} className="flex justify-between gap-3"><span>{item.topic}</span><Change value={item.change} /></li>
@@ -109,8 +109,8 @@ export default function Compare() {
 
       {/* Trend chart */}
       <section className="card">
-        <h2 className="text-base font-semibold text-slate-900">Trend</h2>
-        <p className="mt-1 text-sm text-slate-500">Overall score, plus the topics you tick in the table below (up to five).</p>
+        <h2 className="font-serif text-lg font-medium text-ink">Trend</h2>
+        <p className="mt-1 text-sm text-ink-muted">Overall score, plus the topics you tick in the table below (up to five).</p>
         <div className="mt-4 h-72">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartRows} margin={{ top: 8, right: 16, left: -16, bottom: 0 }}>
@@ -131,8 +131,8 @@ export default function Compare() {
       {/* Topic table */}
       <section className="card overflow-x-auto p-0">
         <div className="px-6 pt-5">
-          <h2 className="text-base font-semibold text-slate-900">Scores by topic</h2>
-          <p className="mt-1 text-sm text-slate-500">Average rubric score (1–5). <span className="text-slate-400">Grey</span> means fewer than 5 scored comments.</p>
+          <h2 className="font-serif text-lg font-medium text-ink">Scores by topic</h2>
+          <p className="mt-1 text-sm text-ink-muted">Average rubric score (1–5). <span className="text-ink-muted">Grey</span> means fewer than 5 scored comments.</p>
         </div>
         <table className="table mt-3">
           <thead>
@@ -144,7 +144,7 @@ export default function Compare() {
             </tr>
           </thead>
           <tbody>
-            <tr className="bg-slate-50 font-medium">
+            <tr className="bg-page font-medium">
               <td />
               <td>Overall</td>
               {reports.map((r) => <td key={r.id} className="text-right tabular-nums">{fmt(r.overall_score)}</td>)}
@@ -156,14 +156,14 @@ export default function Compare() {
                   <input
                     type="checkbox"
                     aria-label={`Show ${row.topic} in chart`}
-                    className="h-4 w-4 accent-blue-800"
+                    className="h-4 w-4 accent-accent"
                     checked={chartTopics.includes(row.topic)}
                     onChange={() => toggleTopic(row.topic)}
                   />
                 </td>
                 <td>{row.topic}</td>
                 {row.cells.map((cell, i) => (
-                  <td key={reports[i].id} className={`text-right tabular-nums ${cell?.low_sample ? 'text-slate-400' : ''}`}
+                  <td key={reports[i].id} className={`text-right tabular-nums ${cell?.low_sample ? 'text-ink-muted' : ''}`}
                       title={cell ? `${cell.scored_comments} scored comments` : 'Not in this report'}>
                     {fmt(cell?.average_score)}
                   </td>
@@ -174,8 +174,8 @@ export default function Compare() {
             {reports.some((r) => r.general_sentiment != null) && (
               <tr>
                 <td />
-                <td className="text-slate-600">General praise or criticism (no specific topic)</td>
-                {reports.map((r) => <td key={r.id} className="text-right tabular-nums text-slate-600">{fmt(r.general_sentiment)}</td>)}
+                <td className="text-ink-soft">General praise or criticism (no specific topic)</td>
+                {reports.map((r) => <td key={r.id} className="text-right tabular-nums text-ink-soft">{fmt(r.general_sentiment)}</td>)}
                 <td />
               </tr>
             )}
@@ -186,7 +186,7 @@ export default function Compare() {
       {hasPace && (
         <section className="card overflow-x-auto p-0">
           <div className="px-6 pt-5">
-            <h2 className="text-base font-semibold text-slate-900">Pace: what students said</h2>
+            <h2 className="font-serif text-lg font-medium text-ink">Pace: what students said</h2>
           </div>
           <table className="table mt-3">
             <thead>
@@ -210,8 +210,8 @@ export default function Compare() {
       {data.ratings.length > 0 && (
         <section className="card overflow-x-auto p-0">
           <div className="px-6 pt-5">
-            <h2 className="text-base font-semibold text-slate-900">Survey rating questions</h2>
-            <p className="mt-1 text-sm text-slate-500">Average answers to the multiple-choice questions found in both files (scale as in the original survey).</p>
+            <h2 className="font-serif text-lg font-medium text-ink">Survey rating questions</h2>
+            <p className="mt-1 text-sm text-ink-muted">Average answers to the multiple-choice questions found in both files (scale as in the original survey).</p>
           </div>
           <table className="table mt-3">
             <thead>

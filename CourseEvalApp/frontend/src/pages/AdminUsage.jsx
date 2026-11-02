@@ -9,7 +9,7 @@ export default function AdminUsage() {
 
   useEffect(() => { api('/admin/usage').then(setUsage).catch((err) => toast.error(err.message)); }, []);
 
-  if (!usage) return <div className="page text-sm text-slate-500">Loading…</div>;
+  if (!usage) return <div className="page text-sm text-ink-muted">Loading…</div>;
 
   return (
     <div className="page max-w-5xl">
@@ -18,15 +18,15 @@ export default function AdminUsage() {
 
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
         <div className="card">
-          <p className="text-sm text-slate-500">Spent this credit year</p>
+          <p className="text-sm text-ink-muted">Spent this credit year</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">{formatMoney(usage.lab_spend_usd)}</p>
         </div>
         <div className="card">
-          <p className="text-sm text-slate-500">Total budget</p>
+          <p className="text-sm text-ink-muted">Total budget</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">{usage.budget_usd ? formatMoney(usage.budget_usd) : 'Not set'}</p>
         </div>
         <div className="card">
-          <p className="text-sm text-slate-500">Budget left</p>
+          <p className="text-sm text-ink-muted">Budget left</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">{usage.budget_remaining_usd != null ? formatMoney(usage.budget_remaining_usd) : '—'}</p>
         </div>
       </div>
@@ -45,16 +45,16 @@ export default function AdminUsage() {
           </thead>
           <tbody>
             {usage.per_user.length === 0 && (
-              <tr><td colSpan={6} className="text-center text-slate-500">No analyses yet this credit year.</td></tr>
+              <tr><td colSpan={6} className="text-center text-ink-muted">No analyses yet this credit year.</td></tr>
             )}
             {usage.per_user.map((row) => (
               <tr key={row.user_id}>
                 <td>{row.email}</td>
-                <td className="text-slate-600">{MODE_LABELS[row.credit_mode] || row.credit_mode}</td>
+                <td className="text-ink-soft">{MODE_LABELS[row.credit_mode] || row.credit_mode}</td>
                 <td className="text-right tabular-nums">{row.runs}</td>
-                <td className="text-right tabular-nums text-slate-600">{row.input_tokens.toLocaleString()} / {row.output_tokens.toLocaleString()}</td>
+                <td className="text-right tabular-nums text-ink-soft">{row.input_tokens.toLocaleString()} / {row.output_tokens.toLocaleString()}</td>
                 <td className="text-right font-medium tabular-nums">{formatMoney(row.lab_cost_usd)}</td>
-                <td className="text-right tabular-nums text-slate-600">{row.credit_mode === 'our_key_capped' ? formatMoney(row.yearly_cap_usd) : '—'}</td>
+                <td className="text-right tabular-nums text-ink-soft">{row.credit_mode === 'our_key_capped' ? formatMoney(row.yearly_cap_usd) : '—'}</td>
               </tr>
             ))}
           </tbody>

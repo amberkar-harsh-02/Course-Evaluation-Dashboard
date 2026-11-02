@@ -41,8 +41,8 @@ export default function Login() {
         </div>
         <button className="btn-primary w-full" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
       </form>
-      <p className="mt-6 text-sm text-slate-600">
-        No account yet? <Link to="/register" className="font-medium text-blue-800 hover:underline">Request access</Link>
+      <p className="mt-6 text-sm text-ink-soft">
+        No account yet? <Link to="/register" className="font-medium text-accent hover:underline">Request access</Link>
       </p>
     </AuthShell>
   );

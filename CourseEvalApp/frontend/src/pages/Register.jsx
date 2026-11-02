@@ -53,13 +53,13 @@ export default function Register() {
           <input id="email" className="input" type="email" required value={form.email} onChange={update('email')} />
         </div>
         <div>
-          <label className="label" htmlFor="department">Department <span className="font-normal text-slate-400">(optional)</span></label>
+          <label className="label" htmlFor="department">Department <span className="font-normal text-ink-muted">(optional)</span></label>
           <input id="department" className="input" value={form.department} onChange={update('department')} />
         </div>
         <div>
           <label className="label" htmlFor="password">Password</label>
           <input id="password" className="input" type="password" autoComplete="new-password" required minLength={10} value={form.password} onChange={update('password')} />
-          <p className="mt-1 text-xs text-slate-500">At least 10 characters, mixing letters with numbers or symbols.</p>
+          <p className="mt-1 text-xs text-ink-muted">At least 10 characters, mixing letters with numbers or symbols.</p>
         </div>
         <div>
           <label className="label" htmlFor="confirm">Repeat password</label>
@@ -67,8 +67,8 @@ export default function Register() {
         </div>
         <button className="btn-primary w-full" disabled={busy}>{busy ? 'Sending…' : 'Request access'}</button>
       </form>
-      <p className="mt-6 text-sm text-slate-600">
-        Already approved? <Link to="/login" className="font-medium text-blue-800 hover:underline">Sign in</Link>
+      <p className="mt-6 text-sm text-ink-soft">
+        Already approved? <Link to="/login" className="font-medium text-accent hover:underline">Sign in</Link>
       </p>
     </AuthShell>
   );

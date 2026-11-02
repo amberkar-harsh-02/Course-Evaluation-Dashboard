@@ -95,12 +95,12 @@ export default function NewAnalysis() {
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={(e) => { e.preventDefault(); setDragging(false); if (!running) pick(e.dataTransfer.files?.[0]); }}
-          className={`rounded-md border-2 border-dashed px-6 py-10 text-center text-sm ${dragging ? 'border-blue-700 bg-blue-50' : 'border-slate-300 bg-slate-50'} ${running ? 'opacity-60' : 'cursor-pointer hover:border-slate-400'}`}
+          className={`rounded border-2 border-dashed px-6 py-10 text-center text-sm ${dragging ? 'border-accent bg-accent-tint' : 'border-line bg-page'} ${running ? 'opacity-60' : 'cursor-pointer hover:border-ink-muted'}`}
         >
           {file ? (
-            <p><span className="font-medium text-slate-900">{file.name}</span> <span className="text-slate-500">({(file.size / 1024 / 1024).toFixed(1)} MB)</span></p>
+            <p><span className="font-medium text-ink">{file.name}</span> <span className="text-ink-muted">({(file.size / 1024 / 1024).toFixed(1)} MB)</span></p>
           ) : (
-            <p className="text-slate-600">Drop a file here or <span className="font-medium text-blue-800">choose one</span><br /><span className="text-xs text-slate-500">PDF, Word, Excel or CSV, up to 25 MB</span></p>
+            <p className="text-ink-soft">Drop a file here or <span className="font-medium text-accent">choose one</span><br /><span className="text-xs text-ink-muted">PDF, Word, Excel or CSV, up to 25 MB</span></p>
           )}
           <input ref={inputRef} type="file" accept={ACCEPTED} className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
         </div>
@@ -111,7 +111,7 @@ export default function NewAnalysis() {
             <input id="course" className="input" value={course} onChange={(e) => setCourse(e.target.value)} placeholder="e.g. CHEM 110" disabled={running} />
           </div>
           <div>
-            <label className="label" htmlFor="term">Term <span className="font-normal text-slate-400">(optional)</span></label>
+            <label className="label" htmlFor="term">Term <span className="font-normal text-ink-muted">(optional)</span></label>
             <input id="term" className="input" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="e.g. Fall 2025" disabled={running} />
           </div>
         </div>
@@ -129,7 +129,7 @@ export default function NewAnalysis() {
         <div className="flex items-center gap-3">
           <button className="btn-primary" disabled={!file || running}>{running ? 'Analyzing…' : 'Start analysis'}</button>
           {credits?.credit_mode === 'own_key' && !credits.has_own_key && (
-            <Link to="/account" className="text-sm text-blue-800 hover:underline">Add your OpenAI key first</Link>
+            <Link to="/account" className="text-sm text-accent hover:underline">Add your OpenAI key first</Link>
           )}
         </div>
       </form>
@@ -140,11 +140,11 @@ export default function NewAnalysis() {
             <p className="notice-error">{job.error}</p>
           ) : (
             <>
-              <p className="text-sm font-medium text-slate-800">{STAGES[job.stage] || 'Waiting to start'}</p>
-              <div className="mt-3 h-2 w-full overflow-hidden rounded bg-slate-100">
-                <div className="h-2 bg-blue-800 transition-all" style={{ width: `${percent ?? 5}%` }} />
+              <p className="text-sm font-medium text-ink">{STAGES[job.stage] || 'Waiting to start'}</p>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded bg-line-soft">
+                <div className="h-2 bg-accent transition-all" style={{ width: `${percent ?? 5}%` }} />
               </div>
-              <p className="mt-2 text-xs text-slate-500">
+              <p className="mt-2 text-xs text-ink-muted">
                 {job.total ? `${job.done} of ${job.total}` : 'This usually takes under a minute.'} You can leave this page; the report will appear under My reports.
               </p>
             </>

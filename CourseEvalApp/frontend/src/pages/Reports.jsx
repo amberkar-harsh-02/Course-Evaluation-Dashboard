@@ -41,19 +41,19 @@ export default function Reports() {
       </div>
 
       {error && <p className="notice-error mb-4">{error}</p>}
-      {reports === null && !error && <p className="text-sm text-slate-500">Loading…</p>}
+      {reports === null && !error && <p className="text-sm text-ink-muted">Loading…</p>}
 
       {reports?.length === 0 && (
         <div className="card text-center">
-          <p className="font-medium text-slate-800">No reports yet</p>
-          <p className="mt-1 text-sm text-slate-500">Upload an evaluation file (PDF, Excel, CSV or Word) to create your first report.</p>
+          <p className="font-medium text-ink">No reports yet</p>
+          <p className="mt-1 text-sm text-ink-muted">Upload an evaluation file (PDF, Excel, CSV or Word) to create your first report.</p>
           <Link to="/new" className="btn-primary mt-4">Start an analysis</Link>
         </div>
       )}
 
       {reports?.length > 1 && (
-        <div className="mb-3 flex items-center justify-between rounded-md border border-slate-200 bg-white px-4 py-2 text-sm">
-          <span className="text-slate-600">
+        <div className="mb-3 flex items-center justify-between rounded border border-line bg-paper px-4 py-2 text-sm">
+          <span className="text-ink-soft">
             {selected.length === 0
               ? 'Tick two or more reports to compare them across terms.'
               : `${selected.length} selected${selected.length === MAX_COMPARE ? ' (maximum)' : ''}`}
@@ -86,27 +86,27 @@ export default function Reports() {
             </thead>
             <tbody>
               {reports.map((report) => (
-                <tr key={report.id} className={selected.includes(report.id) ? 'bg-blue-50/60' : ''}>
+                <tr key={report.id} className={selected.includes(report.id) ? 'bg-accent-tint' : ''}>
                   {reports.length > 1 && (
                     <td>
                       <input
                         type="checkbox"
                         aria-label={`Select ${report.course} ${report.term || ''} for comparison`}
-                        className="h-4 w-4 accent-blue-800"
+                        className="h-4 w-4 accent-accent"
                         checked={selected.includes(report.id)}
                         onChange={() => toggle(report.id)}
                       />
                     </td>
                   )}
                   <td>
-                    <Link to={`/reports/${report.id}`} className="font-medium text-blue-800 hover:underline">{report.course}</Link>
-                    <p className="text-xs text-slate-500">{report.original_filename}</p>
+                    <Link to={`/reports/${report.id}`} className="font-medium text-accent hover:underline">{report.course}</Link>
+                    <p className="text-xs text-ink-muted">{report.original_filename}</p>
                   </td>
-                  <td className="text-slate-600">{report.term || '—'}</td>
-                  <td className="text-slate-600">{formatDate(report.created_at)}</td>
+                  <td className="text-ink-soft">{report.term || '—'}</td>
+                  <td className="text-ink-soft">{formatDate(report.created_at)}</td>
                   <td className="text-right font-medium tabular-nums">{report.overall_score != null ? `${report.overall_score.toFixed(2)} / 5` : '—'}</td>
                   <td className="text-right">
-                    <button className="text-xs font-medium text-red-700 hover:underline" onClick={() => remove(report)}>Delete</button>
+                    <button className="text-xs font-medium text-score-low hover:underline" onClick={() => remove(report)}>Delete</button>
                   </td>
                 </tr>
               ))}

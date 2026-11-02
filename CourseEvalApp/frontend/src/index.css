@@ -2,33 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Shared building blocks for the app pages (calm, academic look; full redesign in Phase 5) */
+/* Shared building blocks. Tokens live in tailwind.config.js. */
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply bg-page font-sans text-base text-ink antialiased;
+    font-feature-settings: "tnum" 0;
   }
-  .dark body {
-    @apply bg-zinc-900 text-zinc-100;
+  h1, h2, h3 { @apply text-ink; }
+  :focus-visible { @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-paper; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
   }
 }
 
 @layer components {
-  .page { @apply mx-auto w-full max-w-5xl px-6 py-8; }
-  .page-title { @apply text-2xl font-semibold tracking-tight text-slate-900; }
-  .page-subtitle { @apply mt-1 text-sm text-slate-500; }
-  .card { @apply rounded-lg border border-slate-200 bg-white p-6; }
-  .label { @apply mb-1 block text-sm font-medium text-slate-700; }
-  .input { @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-700 focus:ring-1 focus:ring-blue-700 disabled:bg-slate-100; }
-  .btn { @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50; }
-  .btn-primary { @apply btn bg-blue-800 text-white hover:bg-blue-900; }
-  .btn-secondary { @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50; }
-  .btn-danger { @apply btn border border-red-200 bg-white text-red-700 hover:bg-red-50; }
+  .page { @apply mx-auto w-full max-w-5xl px-5 py-8 sm:px-8; }
+  .page-title { @apply font-serif text-3xl font-medium text-ink; }
+  .page-subtitle { @apply mt-1 max-w-2xl text-sm text-ink-muted; }
+  .section-title { @apply font-serif text-xl font-medium text-ink; }
+  .card { @apply rounded border border-line bg-paper p-6; }
+  .label { @apply mb-1 block text-sm font-medium text-ink-soft; }
+  .input { @apply w-full rounded border border-line bg-paper px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-accent focus:ring-1 focus:ring-accent disabled:bg-page; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-primary { @apply btn bg-accent text-white hover:bg-accent-dark; }
+  .btn-secondary { @apply btn border border-line bg-paper text-ink-soft hover:border-ink-muted hover:text-ink; }
+  .btn-danger { @apply btn border border-line bg-paper text-score-low hover:border-score-low; }
+  .link { @apply font-medium text-accent underline-offset-2 hover:underline; }
   .table { @apply w-full text-left text-sm; }
-  .table th { @apply border-b border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500; }
-  .table td { @apply border-b border-slate-100 px-3 py-3 align-middle; }
-  .badge { @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-medium; }
-  .notice { @apply rounded-md border px-4 py-3 text-sm; }
-  .notice-error { @apply notice border-red-200 bg-red-50 text-red-800; }
-  .notice-info { @apply notice border-blue-200 bg-blue-50 text-blue-900; }
-  .notice-success { @apply notice border-green-200 bg-green-50 text-green-800; }
+  .table th { @apply border-b border-line px-3 py-2 text-xs font-medium text-ink-muted; }
+  .table td { @apply border-b border-line-soft px-3 py-3 align-middle; }
+  .badge { @apply inline-flex items-center rounded-sm px-1.5 py-0.5 text-xs font-medium; }
+  .notice { @apply rounded border px-4 py-3 text-sm; }
+  .notice-error { @apply notice border-score-low/30 bg-score-lowTint text-score-low; }
+  .notice-info { @apply notice border-accent/20 bg-accent-tint text-ink-soft; }
+  .notice-success { @apply notice border-score-high/30 bg-score-highTint text-score-high; }
+  .num { font-variant-numeric: tabular-nums; }
 }
