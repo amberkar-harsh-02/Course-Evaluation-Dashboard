@@ -12,6 +12,7 @@ import Register from './pages/Register';
 import Reports from './pages/Reports';
 import NewAnalysis from './pages/NewAnalysis';
 import ReportView from './pages/ReportView';
+import Compare from './pages/Compare';
 import Account from './pages/Account';
 import AdminUsers from './pages/AdminUsers';
 import AdminUsage from './pages/AdminUsage';
@@ -38,6 +39,7 @@ createRoot(document.getElementById('root')).render(
             <Route index element={<Reports />} />
             <Route path="new" element={<NewAnalysis />} />
             <Route path="account" element={<Account />} />
+            <Route path="compare" element={<Compare />} />
             <Route path="admin/users" element={<RequireAuth admin><AdminUsers /></RequireAuth>} />
             <Route path="admin/usage" element={<RequireAuth admin><AdminUsage /></RequireAuth>} />
           </Route>
