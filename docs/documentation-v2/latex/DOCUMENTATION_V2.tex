@@ -1,0 +1,898 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\PassOptionsToPackage{dvipsnames,svgnames,x11names}{xcolor}
+\documentclass[
+  11pt,
+]{article}
+\usepackage{xcolor}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\setcounter{secnumdepth}{-\maxdimen} % remove section numbering
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math} % this also loads fontspec
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+\usepackage{lmodern}
+\ifPDFTeX\else
+  % xetex/luatex font selection
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{longtable,booktabs,array}
+\newcounter{none} % for unnumbered tables
+\usepackage{calc} % for calculating minipage widths
+% Correct order of tables after \paragraph or \subparagraph
+\usepackage{etoolbox}
+\makeatletter
+\patchcmd\longtable{\par}{\if@noskipsec\mbox{}\fi\par}{}{}
+\makeatother
+% Allow footnotes in longtable head/foot
+\IfFileExists{footnotehyper.sty}{\usepackage{footnotehyper}}{\usepackage{footnote}}
+\makesavenoteenv{longtable}
+\usepackage{graphicx}
+\makeatletter
+\newsavebox\pandoc@box
+\newcommand*\pandocbounded[1]{% scales image to fit in text height/width
+  \sbox\pandoc@box{#1}%
+  \Gscale@div\@tempa{\textheight}{\dimexpr\ht\pandoc@box+\dp\pandoc@box\relax}%
+  \Gscale@div\@tempb{\linewidth}{\wd\pandoc@box}%
+  \ifdim\@tempb\p@<\@tempa\p@\let\@tempa\@tempb\fi% select the smaller of both
+  \ifdim\@tempa\p@<\p@\scalebox{\@tempa}{\usebox\pandoc@box}%
+  \else\usebox{\pandoc@box}%
+  \fi%
+}
+% Set default figure placement to htbp
+\def\fps@figure{htbp}
+\makeatother
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\definecolor{ocean}{HTML}{1E5A8A}
+\usepackage{bookmark}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\urlstyle{same}
+\hypersetup{
+  pdftitle={Course Evaluation Analytics Platform: Documentation V2},
+  pdfauthor={Harsh Amberkar, California State University, Monterey Bay},
+  colorlinks=true,
+  linkcolor={ocean},
+  filecolor={Maroon},
+  citecolor={Blue},
+  urlcolor={ocean},
+  pdfcreator={LaTeX via pandoc}}
+
+\title{Course Evaluation Analytics Platform: Documentation V2}
+\usepackage{etoolbox}
+\makeatletter
+\providecommand{\subtitle}[1]{% add subtitle to \maketitle
+  \apptocmd{\@title}{\par {\large #1 \par}}{}{}
+}
+\makeatother
+\subtitle{Project history, design and results, from the first prototype to the
+merged web app}
+\author{Harsh Amberkar, California State University, Monterey Bay}
+\date{November 2, 2026}
+
+\begin{document}
+\maketitle
+
+{
+\hypersetup{linkcolor=black}
+\setcounter{tocdepth}{3}
+\tableofcontents
+}
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}ll@{}}
+\toprule\noalign{}
+& \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Version & 2.0, November 2, 2026 (replaces Documentation V1, July 16, 2026) \\
+Author & Harsh Amberkar, California State University, Monterey Bay.
+\texttt{TODO\ (author):\ add\ co-authors,\ advisor\ and\ lab\ name} \\
+Live site & \texttt{https://secotterlab.org/course-eval-app/} (pilot portal:
+\texttt{/course-eval/}) \\
+Source code &
+\texttt{github.com/amberkar-harsh-02/Course-Evaluation-Dashboard} \\
+Status & In use on the lab server; cloud hosting deferred \\
+\end{longtable}
+}
+
+\begin{quote}
+\textbf{How to read this document.} Sections 1, 5 and 6 update the three
+chapters of Documentation V1 (product overview, pipeline pillars, dashboard
+metrics) so they describe the system as it works today. Sections 2 to 4 and 7 to
+10 are new: the project timeline, what changed and why, the measured results,
+the web application, the evaluation method, privacy and the lessons learned.
+Every number has its source next to it. Places where a fact still has to be
+confirmed are marked \texttt{TODO\ (author)}.
+\end{quote}
+
+\section{Abstract}\label{abstract}
+
+Open-ended comments in end-of-term course evaluations are the richest feedback
+instructors receive, and the hardest to use: a class of a hundred students
+produces hundreds of loosely structured remarks that are slow to read and easy
+to misjudge. This project built a system that reads an evaluation export,
+assigns each student answer to one or more of twelve teaching topics, scores it
+from 1 to 5 against a topic-specific rubric, and presents the results to the
+instructor as an interactive report. Over 2026 the system moved from a research
+comparison of four language models, through a pilot in which 17 instructors
+rated the reports (mean 4.35 of 5 for trusting that the analysis represents
+their students\textquotesingle{} feedback), to a self-service web application
+with accounts, cost controls and term-to-term comparison. A review in October
+2026 rebuilt the analysis pipeline. Keeping each answer whole, giving the model
+the survey question, and asking for topics and scores in one structured call
+raised topic agreement with human labels from F1 0.815 to 0.857, lowered the
+score error from 0.38 to 0.27 points on the 1 to 5 scale, and cut processing
+time for the 88-comment benchmark from 525 s to 28.5 s.
+
+\section{1. Product overview}\label{1-product-overview}
+
+\subsection{What the platform is}\label{what-the-platform-is}
+
+The Course Evaluation Analytics Platform reads raw, unstructured student course
+evaluations and turns them into a report an instructor can explore. Instead of
+scrolling through hundreds of comments at the end of a term, the instructor sees
+what each comment is about, how positive or negative it is, a short written
+takeaway for every teaching topic, and a note whenever a topic rests on too few
+comments to rely on.
+
+\subsection{Who it is for}\label{who-it-is-for}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Instructors}, who want a fast and trustworthy summary of what students
+  said, without losing the individual comments behind each number, so they can
+  see what is working and what to change.
+\item
+  \textbf{Administrators and the research team}, who approve accounts, control
+  the shared AI budget, and need a consistent view of feedback across courses
+  without hand-coding open-ended responses.
+\end{itemize}
+
+\subsection{What problem it solves}\label{what-problem-it-solves}
+
+A single comment can touch several topics, contradict itself, or say almost
+nothing ("Labs", "None"). Sorting and weighing such feedback by hand is slow and
+inconsistent. The platform:
+
+\begin{itemize}
+\tightlist
+\item
+  reads every answer whole, together with the survey question it responds to;
+\item
+  separates multi-topic answers so mixed feedback does not blur together;
+\item
+  scores each topic against a fixed rubric instead of an impressionistic skim;
+\item
+  flags when the evidence behind a score is too thin to act on;
+\item
+  delivers the result as a private, interactive web report that can be compared
+  across terms.
+\end{itemize}
+
+\subsection{The technology today}\label{the-technology-today}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}ll@{}}
+\toprule\noalign{}
+Layer & What it is \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Text extraction ("OCR") server & Python, FastAPI. Reads PDF, Excel, CSV and Word
+exports and returns each student answer whole with its question, plus the
+multiple-choice rating tables. \\
+Analysis pipeline & Python. One structured call per answer to OpenAI
+\texttt{gpt-5.6-terra} (default) or, for the research team only, a local Qwen
+model on the lab Mac Studio. Parallel and cached. \\
+Web application & FastAPI backend with PostgreSQL; React front end. Accounts
+with administrator approval, per-instructor AI budgets, uploads with live
+progress, private reports, comparison across terms. \\
+\end{longtable}
+}
+
+\section{2. Project timeline}\label{2-project-timeline}
+
+\pandocbounded{\includegraphics[keepaspectratio,alt={Project timeline, 2026}]{figures/timeline.png}}
+
+\emph{Figure 1. Phases of the project. Dates come from the git history (26
+commits, April 13 to November 2, 2026), document metadata and file timestamps.}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}llll@{}}
+\toprule\noalign{}
+When (2026) & Phase & What happened & Source \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Spring, before April & Model comparison research & Four approaches compared
+against human labels: two local LLMs (Llama3, Gemma 3) and two transformer
+classifiers (RoBERTa-large-MNLI, DistilRoBERTa). LLMs clearly ahead (Section
+4.1). & \texttt{NLP/experiments.md}, \texttt{NLP/results/*\_comparison.csv}.
+\texttt{TODO\ (author):\ exact\ dates} \\
+Planning & Architecture and data contract & Initial plan: a Node/Express server
+reading a JSON file produced on the lab Mac Studio, free models only, ten
+themes, and a decision on how to extract text safely. &
+\texttt{NLP/Projnotes1.docx} \\
+April 13 & Text extraction server & FastAPI server with DOCX (python-docx) and
+PDF (pdfplumber) extraction and text sanitization; first commit. & git,
+\texttt{NLP/WorkLog/Development\_Notes\_Apr\_13.docx} \\
+April 23 & Rubric design & Rubric moved from 0 to 4 to \textbf{1 to 5} (so a
+high score always means positive and no instructor sees a zero); Pace and
+Workload measured separately; several themes merged or split, giving the final
+\textbf{12 topics}. & \texttt{NLP/Drivenotes/} (meeting notes) \\
+June 12 & Methodology guide & Six-step method documented: normalization and
+de-duplication, retrieval of similar human-graded examples (RAG), evidence-based
+topic classification, rubric scoring, quote grounding, summarization. Model:
+Llama3. & \texttt{CourseEval\_info.pdf} \\
+June & Model trials on real files & Qwen, Llama, Gemma, Claude Sonnet and OpenAI
+outputs produced for the pilot files. & \texttt{First\ deployment/Test-*}
+folders \\
+June 24 to July 16 & Manuals and V1 & Platform manual (June 24) and
+\textbf{Documentation V1} (July 16): five engineering pillars, two prompts per
+comment, confidence thresholds. & the two PDFs \\
+July to September 15 & Pilot & Reports produced for the pilot instructors and
+shared as JSON files; instructors opened them in the Professor Portal.
+\textbf{17 feedback-form responses} between August 6 and September 15. &
+\texttt{First\ deployment/Feedback/}.
+\texttt{TODO\ (author):\ number\ of\ invited\ instructors\ and\ courses} \\
+October 7 to 8 & Consolidation and backend review & All parts brought into one
+repository. Review and rebuild of extraction and analysis; evaluation harness
+and automated tests added (Section 4.2). & git,
+\texttt{docs/Backend\_Improvements\_Report.pdf} \\
+October 28 & Portal fixes & Stray bullet symbols removed from comments; "ignore
+comments" with score recalculation and JSON export added to the portal. & git \\
+November 1 & Merged web application & Accounts with administrator approval;
+credit modes and dollar caps; encrypted personal API keys; uploads and
+background jobs; PostgreSQL; comparison across terms. Phase 0 purchase estimate.
+& git, \texttt{docs/Phase0\_Purchase\_Estimate.pdf} \\
+November 2 & Design and usability & Report screen rebuilt on the original
+dashboard layout; dark mode; sidebar topic tree; first-visit Guide; new upload
+page; accessible colour scheme. & git \\
+\end{longtable}
+}
+
+\section{3. What changed and why}\label{3-what-changed-and-why}
+
+\pandocbounded{\includegraphics[keepaspectratio,alt={Architecture then and now}]{figures/architecture.png}}
+
+\emph{Figure 2. Top: the pilot set-up, in which the research team ran each file
+and sent the instructor a JSON report. Bottom: the merged application, in which
+instructors run their own analyses.}
+
+\subsection{3.1 From V1\textquotesingle s five pillars to the current
+pipeline}\label{31-from-v1s-five-pillars-to-the-current-pipeline}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}llll@{}}
+\toprule\noalign{}
+V1 pillar (July 2026) & What it did then & What it does now & Why it changed \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+1. Configuration and rules & Local Qwen model; per-topic confidence thresholds
+(0.35 to 0.45); keyword hints that forced extra topics. & OpenAI
+\texttt{gpt-5.6-terra} by default with a provider-enforced JSON schema; local
+Qwen kept for the research team. Thresholds kept (Section 6). Keyword forcing
+\textbf{removed}. & Keyword rules added topics the model then had to reject. A
+hosted model with schema enforcement removed malformed answers. \\
+2. Data preparation and RAG & Cleaned text; split answers into
+\textbf{sentences}; retrieved similar human-labelled examples. & Keeps each
+\textbf{answer whole} with its survey question; skips answers to questions about
+the student rather than the teaching; still retrieves examples (2 for topics, 1
+for scoring) when the labelled files are present. & Splitting turned one answer
+into many "comments" (one file: 410 fragments for 123 real answers) and made
+fragments uninterpretable. Answers to non-teaching questions filled the "Other"
+bin (about 25 \% of comments). \\
+3. Categorization engine (prompt 1) & One call to pick topics. & Merged into a
+single structured call. & Two calls per topic cost time and money and gave lower
+accuracy (Section 4.2). \\
+4. Scoring engine (prompt 2) & One more call per assigned topic. & Same call
+returns, per topic, a 1 to 5 score, confidence, evidence quote and, for Pace,
+the direction (too fast, too slow, about right). & As above. Pace previously
+used a non-monotonic code (1 = too fast, 2 = too slow, ...), so its average was
+meaningless; it now runs from 1 (serious problem) to 5 (well paced) with a
+separate direction. \\
+5. Main loop and export & Sequential calls; JSON and CSV export. & Up to 8
+parallel calls (2 for the local model); answers cached so an unchanged re-run is
+free; every dropped result and model error is counted in the report; reports
+stored in PostgreSQL per owner. & A large file took up to 78 minutes; silent
+drops hid how much of a report rested on uncertain results. \\
+\end{longtable}
+}
+
+\subsection{3.2 From a shared file to a self-service
+application}\label{32-from-a-shared-file-to-a-self-service-application}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}ll@{}}
+\toprule\noalign{}
+Then (pilot) & Now (merged app) \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+The research team uploaded each file in an admin dashboard and sent the
+instructor a JSON file through Google Drive. & Instructors sign in, upload their
+own file, watch progress, and find the report under My reports. \\
+Anyone could load any JSON file into the portal. & Each report belongs to one
+account and only its owner can open it. \\
+One shared sign-in; no personal accounts or approval. & Registration,
+administrator approval, password rules and lock-out after repeated failed
+sign-ins. \\
+All AI usage on the lab key, untracked. & Every run records tokens and cost. The
+administrator sets each instructor to lab credit with a yearly dollar cap
+(default \$20), lab credit without a cap, or the instructor\textquotesingle s
+own OpenAI key, stored encrypted. \\
+One report at a time. & Comparison of two or more reports of the same course
+across terms, with a trend chart and per-topic change. \\
+User manual as a separate PDF. & Guide page shown on first sign-in and always
+available in the sidebar. \\
+\end{longtable}
+}
+
+\section{4. Results}\label{4-results}
+
+\subsection{4.1 Choosing a model (spring
+2026)}\label{41-choosing-a-model-spring-2026}
+
+The first study compared four approaches against human labels. Topic
+classification was measured on the benchmark comments that could be matched to
+the human-labelled file (27 of 29); sentiment scoring on 195 human-scored
+comment-topic pairs.
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}lllllll@{}}
+\toprule\noalign{}
+Model & Topic micro F1 & Topic macro F1 & Exact topic set & Score exact & Score
+within 1 & Score MAE \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Llama3 (local LLM) & 55.6 \% & 42.4 \% & 14.8 \% & 63.6 \% & 91.8 \% & 0.46 \\
+Gemma 3 (local LLM) & 52.2 \% & 45.4 \% & 25.9 \% & 53.3 \% & 88.7 \% & 0.59 \\
+RoBERTa-large-MNLI & 35.8 \% & 29.1 \% & 0.0 \% & 51.3 \% & 86.7 \% & 0.63 \\
+DistilRoBERTa & 17.8 \% & 15.6 \% & 3.7 \% & 59.0 \% & 87.7 \% & 0.62 \\
+Always predict 5 (baseline) & & & & 63.6 \% & 88.7 \% & 0.53 \\
+\end{longtable}
+}
+
+\emph{Source: \texttt{NLP/results/topic\_model\_comparison.csv} and
+\texttt{NLP/results/sentiment\_model\_comparison.csv}.}
+
+Two findings shaped the rest of the project. First, zero-shot transformer
+classifiers could not assign the twelve topics reliably, so the project
+committed to LLMs. Second, course evaluations are skewed positive: a constant
+prediction of 5 already matches 63.6 \% of human scores, so exact-match accuracy
+alone is a weak measure. Later evaluations therefore report the mean absolute
+error (MAE) and agreement on positive or negative sentiment as well.
+
+\subsection{4.2 Rebuilding the pipeline (October
+2026)}\label{42-rebuilding-the-pipeline-october-2026}
+
+The October review found that most errors came from what the model was given
+rather than from the model itself. After the changes in Section 3.1 the pipeline
+was measured again on the same 88 human-labelled comments with the same model
+(\texttt{gpt-5.6-terra}, retrieval examples on).
+
+\pandocbounded{\includegraphics[keepaspectratio,alt={Accuracy and runtime before and after the rebuild}]{figures/results.png}}
+
+\emph{Figure 3. Agreement with human labels and processing time before (October
+7) and after (October 8) the rebuild.}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}lll@{}}
+\toprule\noalign{}
+Measure (88 human-labelled comments) & Before & After \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Topic micro F1 & 0.815 & 0.857 \\
+Topic macro F1 & & 0.741 \\
+Comments with exactly the right set of topics & 21 \% & 38 \% \\
+Score MAE on the 1 to 5 scale & 0.38 & 0.27 \\
+Scores within 1 point of the human score & & 100 \% \\
+Positive or negative agreement with humans & 91.5 \% & 95.7 \% \\
+Time to process the 88 comments & 525 s & 28.5 s \\
+\end{longtable}
+}
+
+\emph{Sources: \texttt{docs/Backend\_Improvements\_Report.pdf}; "after" details
+from \texttt{NLP/eval\_runs/20261008\_131258\_openai/summary.json} (prompt
+version 2026-10-08.4: topic metrics on 29 matched comments, score metrics on 157
+comment-topic pairs).}
+
+Per-topic F1 after the rebuild ranged from 1.0 (communication and availability)
+and 0.96 (learning resources) down to 0.50 (inclusivity) and 0.0 (grading and
+feedback). With only 29 comments in the topic benchmark, the weakest topics rest
+on very few labelled examples; a larger labelled set is the main item of future
+work (Section 10).
+
+On three real files the rebuild changed what reached the model and how long it
+took:
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}llll@{}}
+\toprule\noalign{}
+File & Units sent to the model & Share left uncategorized & Processing time \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Large spreadsheet export & 410 fragments, now 123 whole answers & 25 \% to 5 \%
+& 23.5 min to 52 s \\
+PDF report & 34 to 50 answers & 24 \% to 8 \% & 97 s to 14 s \\
+Converted Excel report & 32 fragments, now 16 answers & 9 \% to 0 \% & 118 s to
+8 s \\
+\end{longtable}
+}
+
+\emph{Source: \texttt{docs/Backend\_Improvements\_Report.pdf}.} Overall scores
+moved slightly (for example 3.62 to 3.97) because long answers are no longer
+counted several times. Pace averages from before October 8 are not comparable
+with later ones because the Pace rubric was corrected.
+
+\subsection{4.3 What instructors said (pilot, August to September
+2026)}\label{43-what-instructors-said-pilot-august-to-september-2026}
+
+Seventeen pilot instructors completed a feedback form after receiving their
+report. Items used a 1 (strongly disagree) to 5 (strongly agree) scale.
+
+\pandocbounded{\includegraphics[keepaspectratio,alt={Pilot faculty survey}]{figures/pilot_survey.png}}
+
+\emph{Figure 4. Responses to the pilot feedback form (n = 17). Only aggregate
+counts are shown.}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Usability was rated highest.} The structure was easy to follow (mean
+  4.82), the graphs helped interpret the results (4.65) and the comment counts
+  were useful (4.53).
+\item
+  \textbf{Accuracy was rated well, with room to improve.} The topics reflected
+  the comments (4.53); the summaries captured the main themes (4.35); the
+  sentiment matched the instructor\textquotesingle s own reading (4.24). Fifteen
+  of 17 called the tone of the analysis "about right" (one each "too critical"
+  and "too positive").
+\item
+  \textbf{New insight was rated lowest.} "Revealed insights I had not noticed"
+  averaged 3.82, the only item below 4. This suggests the tool mainly organizes
+  and confirms what attentive instructors already sense, and its value lies in
+  the time saved and the evidence it collects.
+\item
+  \textbf{Intended use was strong.} Instructors would use it to inform course
+  revisions (4.35) and after every evaluation cycle (4.35), and somewhat less as
+  evidence of teaching effectiveness (4.18).
+\end{itemize}
+
+\emph{Source: aggregate counts from the pilot feedback form
+(\texttt{First\ deployment/Feedback/}, not in the repository). The
+form\textquotesingle s free-text answers informed the features in Section 3.2.
+\texttt{TODO\ (author):\ add\ a\ short\ thematic\ summary\ of\ the\ free-text\ answers.}}
+
+The pilot feedback and the research team\textquotesingle s own list led directly
+to the next phase: fix extraction, add drag-and-drop upload and comment search,
+add sign-up so instructors keep their own reports, let instructors exclude
+comments and recalculate, add export, show more detail per topic, and compare
+courses or terms.
+
+\subsection{4.4 Cost}\label{44-cost}
+
+A typical file costs a few cents to about a dollar. The Phase 0 estimate
+measured prompt sizes offline: about 3,000 input tokens per answer, of which
+about 2,500 are the fixed rubrics, and about 250 output tokens. An average file
+has 186 answers, about 153 of which are analysed. At 250 files a year that comes
+to roughly \textbf{\$230 to \$500} of OpenAI usage, depending on prompt caching
+and list price. \emph{Source: \texttt{docs/Phase0\_Purchase\_Estimate.pdf}.}
+Since November every run records its actual token use and cost, so this estimate
+can be replaced by measured figures after a full term.
+\texttt{TODO\ (author):\ add\ measured\ cost\ per\ file\ once\ available.}
+
+\section{5. How the analysis works now}\label{5-how-the-analysis-works-now}
+
+This chapter replaces V1\textquotesingle s "Core functional pillars".
+
+\subsection{Step 1: Extraction}\label{step-1-extraction}
+
+The extraction server reads PDF, Excel, CSV and Word exports. It keeps each
+student answer whole, joins lines that the export had wrapped, records the
+survey question each answer responds to, and removes list bullets and stray
+encoding characters. Survey boilerplate, rating rows and unreadable PDF text are
+filtered with rules and a small TF-IDF plus linear SVM classifier. When a
+PDF\textquotesingle s text is mostly not real words (some fonts store letters as
+symbols), the report says so and asks for an Excel or CSV export instead of
+analysing gibberish. Multiple-choice rating tables in Excel and CSV exports are
+read into their own section with counts, mean and full distribution; PDF rating
+tables are not read yet.
+
+\subsection{Step 2: Preparation}\label{step-2-preparation}
+
+Exact duplicate answers are removed. Answers to questions about the student
+rather than the teaching ("Did you feel prepared by prior coursework?") go
+straight to "Other" without an AI call and are counted in the report.
+
+\subsection{Step 3: One structured analysis per
+answer}\label{step-3-one-structured-analysis-per-answer}
+
+Each answer is sent once, with its survey question, the twelve topic definitions
+and the 1 to 5 rubric. When the human-labelled files are present, the most
+similar labelled examples are added for calibration. The provider enforces a
+JSON schema, so the reply always parses. For every topic the answer actually
+discusses, the reply gives:
+
+\begin{itemize}
+\tightlist
+\item
+  the topic and the model\textquotesingle s confidence;
+\item
+  a 1 to 5 score on that topic\textquotesingle s rubric;
+\item
+  an evidence quote from the answer;
+\item
+  for Pace, whether the course felt too fast, too slow or about right.
+\end{itemize}
+
+Generic comments with no specific topic ("Best professor ever!") receive a
+separate general-sentiment score instead.
+
+The twelve topics are: course organization and structure; pace; workload;
+student engagement and participation; clarity of explanations; effectiveness of
+assignments; classroom atmosphere; instructor\textquotesingle s communication
+and availability; inclusivity and sense of belonging; assessment; grading and
+feedback; learning resources and materials.
+
+\subsection{Step 4: Filtering}\label{step-4-filtering}
+
+A topic score is dropped when the model\textquotesingle s confidence is below
+that topic\textquotesingle s threshold: 0.45 for Assessment and Workload, 0.40
+for Pace and Course organization, 0.35 otherwise. Stricter topics need stronger
+evidence because their vocabulary overlaps with others. Every drop and every
+model error is counted in the report rather than silently discarded.
+
+\subsection{Step 5: Aggregation and
+summaries}\label{step-5-aggregation-and-summaries}
+
+Topic averages, the overall score and reliability flags are computed (Section
+6). A final call per topic writes a one-sentence summary of what students said
+about it. Calls run in parallel and are cached, so re-running an unchanged file
+costs nothing.
+
+\section{6. Dashboard metrics explained}\label{6-dashboard-metrics-explained}
+
+This chapter replaces V1\textquotesingle s chapter 3. What it says about
+averages and multi-topic answers still holds; the changes are in how the overall
+grade is formed and in the reliability flags.
+
+\begin{itemize}
+\item
+  \textbf{Topic score.} The mean of the valid 1 to 5 scores for that topic.
+  Answers that mention a topic without evaluating it ("Labs") still appear on
+  the topic for context but are not part of the average. The number of comments
+  on a topic and the number of scored comments can therefore differ, by design.
+\item
+  \textbf{Overall grade.} The mean, over answers, of each
+  answer\textquotesingle s average topic score. A long answer touching five
+  topics counts once, like a short one, and cannot outweigh it.
+\item
+  \textbf{General sentiment.} Generic praise or criticism is shown separately
+  and never changes the overall grade.
+\item
+  \textbf{Multi-topic answers.} Each topic gets its own independent score. "The
+  pace was too fast, but the homework was great" produces a low Pace score and a
+  high assignments score, not one muddled average.
+\item
+  \textbf{Pace direction.} Alongside its score, Pace reports how many answers
+  said too fast, too slow or about right.
+\item
+  \textbf{Reliability flags.} Each topic carries one flag:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    \emph{reliable}: five or more scored comments and no warnings;
+  \item
+    \emph{low sample}: fewer than five scored comments, so read it as
+    directional evidence only;
+  \item
+    \emph{mixed confidence}: some scores rest on low model confidence (below
+    0.35), so read the comments;
+  \item
+    \emph{needs review}: a model error was excluded;
+  \item
+    \emph{unscored}: no scored comments.
+  \end{itemize}
+
+  On the website, topics with fewer than five scored comments are faded and
+  labelled "few".
+\item
+  \textbf{Score colours.} Below 2.5 is red, 2.5 to 3.75 amber, and above 3.75
+  green. The number is always shown with the colour, never instead of it, and
+  every colour meets WCAG AA contrast in light and dark mode.
+\item
+  \textbf{Ignoring comments.} On a topic page an instructor can exclude comments
+  that do not apply (for example, a remark about a different course). The topic
+  and overall scores are recalculated with the same rules as the pipeline, and
+  the excluded comments stay visible, crossed out.
+\end{itemize}
+
+\section{7. The website then and now}\label{7-the-website-then-and-now}
+
+\pandocbounded{\includegraphics[keepaspectratio,alt={The pilot portal}]{figures/then_portal.png}}
+
+\emph{Figure 5. The pilot Professor Portal (July to October 2026): the
+instructor loaded a JSON file shared by the research team. Shown above the
+comment list only; course identity removed.}
+
+\pandocbounded{\includegraphics[keepaspectratio,alt={The current report overview}]{figures/now_overview.png}}
+
+\emph{Figure 6. The current report overview, with illustrative data: overall
+grade, category chart (bar or radar), topic cards, and the topics of the open
+report in the sidebar.}
+
+\pandocbounded{\includegraphics[keepaspectratio,alt={Topic pop-up}]{figures/now_topic.png}}
+
+\emph{Figure 7. Selecting a topic opens a quick view with the score spread,
+sentiment counts, Pace direction, summary and comments; "View more details"
+opens the full topic page (illustrative data).}
+
+\pandocbounded{\includegraphics[keepaspectratio,alt={Comparing terms}]{figures/now_compare.png}}
+
+\emph{Figure 8. Comparison of two terms of the same course (illustrative data).}
+
+What changed for instructors, in the order they meet it:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{Access.} They request an account, are approved by the administrator,
+  and on first sign-in land on a Guide that explains the site. The Guide stays
+  available in the sidebar.
+\item
+  \textbf{Upload.} They drag in an evaluation file (PDF, Word, Excel or CSV, up
+  to 25 MB). The page checks the file type and size before uploading and shows
+  progress in three steps: reading the file, analysing comments, writing
+  summaries.
+\item
+  \textbf{Report.} Overall grade, category chart, topic cards, a pop-up and full
+  page per topic, and a searchable, filterable list of every analysed comment.
+  The open report\textquotesingle s topics are listed in the sidebar.
+\item
+  \textbf{Adjust and export.} They can ignore comments for a topic and
+  recalculate, and download the report as JSON.
+\item
+  \textbf{Compare.} They can select two or more reports to see how each topic
+  changed between terms.
+\item
+  \textbf{Account.} They can see the AI credit left this year, add or replace
+  their own OpenAI key, and change their password.
+\end{enumerate}
+
+The design moved from a generic dashboard look to a restrained academic style:
+IBM Plex Serif and Sans, sentence-case labels, a light and a dark theme, short
+animations that respect the device\textquotesingle s reduced-motion setting, and
+a red-amber-green score scale checked for contrast.
+
+\section{8. Evaluation method}\label{8-evaluation-method}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Ground truth.} Two human-labelled files: topic assignments for
+  benchmark comments (\texttt{HUMAN\_CATEGORIZED\_OUTPUT.csv}) and topic-level
+  scores with reasoning (\texttt{HUMAN\_SENTIMENT\_BASELINE.csv}).
+  \texttt{TODO\ (author):\ describe\ who\ labelled\ them,\ the\ labelling\ instructions,\ and\ inter-rater\ agreement\ if\ measured.}
+\item
+  \textbf{Topic metrics.} Micro and macro F1 over the twelve topics plus
+  "Other", and the share of comments whose full topic set matches exactly.
+\item
+  \textbf{Score metrics.} MAE on the 1 to 5 scale; share of exact and within-1
+  matches; agreement on positive (4 to 5) versus negative (1 to 2) sentiment;
+  coverage (the share of human-scored pairs the model also scored).
+\item
+  \textbf{Harness.} \texttt{NLP/eval.py} runs the pipeline on the labelled
+  comments and writes a summary per run to \texttt{NLP/eval\_runs/}. Every
+  change in Section 3.1 was measured this way before it was kept.
+\item
+  \textbf{Automated tests.} 83 tests (35 for the analysis pipeline and its API,
+  48 for the web application) use a fake model, so they cost nothing and never
+  touch student data.
+\item
+  \textbf{Limitations.} The labelled benchmark is small (88 comments; 29 for
+  topic metrics) and comes from a small number of courses, so per-topic results
+  for rare topics are unstable. The model is a commercial API whose behaviour
+  can change between versions; each report records the model ID and prompt
+  version. The pilot survey is self-reported by volunteers who had already
+  received a report.
+\end{itemize}
+
+\section{9. Privacy, security and data
+handling}\label{9-privacy-security-and-data-handling}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Reports are private.} Each report belongs to the account that created
+  it. Administrators see how many reports a user has, not their contents.
+\item
+  \textbf{Accounts.} Registration requires administrator approval. Passwords are
+  stored with bcrypt, must be at least ten characters and mix letters with
+  numbers or symbols. Five wrong passwords lock the account for 15 minutes.
+  Sign-in tokens expire after two hours, and changing a password signs out other
+  sessions.
+\item
+  \textbf{Personal API keys.} They are encrypted at rest with Fernet
+  (AES-128-CBC with HMAC), shown only as the last four characters, decrypted
+  only in memory during a run, and never logged.
+\item
+  \textbf{Cost control.} Every run records tokens and cost per user. A run is
+  refused before it starts if the user\textquotesingle s yearly cap has already
+  been reached.
+\item
+  \textbf{Hosting.} The application, database and text extraction run on the
+  lab\textquotesingle s server behind HTTPS (Caddy). The API and extraction
+  services listen only on the local machine. The database is backed up nightly
+  and kept for 14 days.
+\item
+  \textbf{Student data in the repository.} None. Raw evaluations, generated
+  reports, the human-labelled files and the model cache are excluded from
+  version control. Screenshots in this document use made-up demo data, except
+  Figure 5, which is cropped so no student text appears.
+\item
+  \textbf{Third-party processing.} Comments are sent to OpenAI for analysis
+  unless the local model is chosen.
+  \texttt{TODO\ (author):\ note\ the\ institution\textquotesingle{}s\ review\ or\ approval\ for\ processing\ evaluation\ data,\ and\ any\ data-processing\ agreement.}
+\end{itemize}
+
+\section{10. Lessons learned and future
+work}\label{10-lessons-learned-and-future-work}
+
+\textbf{Lessons}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{Fix the input before tuning the model.} The largest accuracy gains
+  came from keeping answers whole and passing the survey question, not from
+  changing models.
+\item
+  \textbf{Measure before keeping a change.} A small labelled benchmark and a
+  repeatable harness turned design debates into measurements.
+\item
+  \textbf{Fewer, structured calls beat more calls.} One schema-enforced call per
+  answer was faster, cheaper and more accurate than separate classification and
+  scoring calls.
+\item
+  \textbf{Make uncertainty visible.} Instructors trusted the reports more when
+  thin evidence was flagged rather than hidden.
+\item
+  \textbf{Self-service needs guard rails.} Opening the tool to instructors
+  required approval, budgets and key handling as much as features.
+\end{enumerate}
+
+\textbf{Future work}
+
+\begin{itemize}
+\tightlist
+\item
+  Enlarge and diversify the labelled benchmark, especially for rare topics, and
+  measure inter-rater agreement.
+\item
+  Read rating tables from PDF exports.
+\item
+  Move hosting to a managed cloud provider once funding is confirmed (estimate
+  in \texttt{docs/Phase0\_Purchase\_Estimate.pdf}).
+\item
+  Replace the cost estimate with measured cost per file after a full term.
+\item
+  Study whether instructors change their courses after using the reports (the
+  pilot measured intent only).
+\end{itemize}
+
+\section{Appendix A. Commit timeline}\label{appendix-a-commit-timeline}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}ll@{}}
+\toprule\noalign{}
+Date & Change \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+2026-04-13 & FastAPI text extraction server with DOCX support; PDF extraction
+and text sanitization \\
+2026-10-07 & Repository consolidated: OCR server, LLM pipeline and bridge API,
+admin dashboard, Professor Portal; ignore-comments mode with recalculation and
+export \\
+2026-10-08 & Whole answers with questions and rating tables; single structured
+analysis, parallel calls, cache, jobs API, evaluation harness \\
+2026-10-28 & Bullet symbols stripped from comments in the portal \\
+2026-11-01 & Merged app: registration and approval; token usage and cost
+tracking; credit modes and encrypted keys; uploads, jobs and private reports;
+website; deploy scripts; comparison across terms; academic redesign \\
+2026-11-02 & Dashboard layout restored with dark mode; sidebar topic tree,
+first-visit Guide, new upload page and motion; accessible colour scheme \\
+\end{longtable}
+}
+
+\section{Appendix B. Where things are}\label{appendix-b-where-things-are}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}ll@{}}
+\toprule\noalign{}
+Path & What it holds \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\texttt{OCR/} & Text extraction server \\
+\texttt{NLP/main.py}, \texttt{NLP/data.py} & Analysis pipeline; topic
+definitions and rubric \\
+\texttt{NLP/eval.py}, \texttt{NLP/experiments.md} & Evaluation harness; model
+comparison runbook \\
+\texttt{CourseEvalApp/} & Merged web application (backend and front end) and
+deploy scripts \\
+\texttt{ProfessorPortal/}, \texttt{dashboard/} & Pilot portal and admin
+dashboard (kept running) \\
+\texttt{docs/} & Backend review report, Phase 0 estimate, this document \\
+\texttt{docs/documentation-v2/tools/make\_figures.py} & Rebuilds every figure in
+this document \\
+\end{longtable}
+}
+
+\section{Appendix C. Glossary}\label{appendix-c-glossary}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{F1 score.} Balance of precision (topics the model assigned that were
+  right) and recall (right topics the model found). \emph{Micro} pools all
+  decisions; \emph{macro} averages per topic, so rare topics count equally.
+\item
+  \textbf{MAE.} Mean absolute error: the average distance between the
+  model\textquotesingle s score and the human score on the 1 to 5 scale.
+\item
+  \textbf{RAG.} Retrieval-augmented generation: adding similar human-labelled
+  examples to the prompt.
+\item
+  \textbf{Structured output.} A reply the provider forces to follow a JSON
+  schema, so it can always be read by the program.
+\item
+  \textbf{Prompt caching.} The provider\textquotesingle s discount for prompt
+  text repeated exactly at the start of a request (here, the rubrics).
+\end{itemize}
+
+\end{document}

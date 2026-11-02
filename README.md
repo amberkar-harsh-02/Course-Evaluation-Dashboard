@@ -14,6 +14,20 @@ For each student comment, an LLM:
 The result is one JSON report per course, with an overall score, per-topic averages, summaries and every scored
 comment.
 
+## Project history
+
+The full story, with sources for every number, is in
+[Documentation V2](docs/documentation-v2/DOCUMENTATION_V2.md). A LaTeX version for Overleaf is in
+[`docs/documentation-v2/latex/`](docs/documentation-v2/latex/). In short, for 2026:
+
+| When | Milestone |
+|---|---|
+| Spring | Four models compared against human labels. LLMs (Llama3, Gemma) beat transformer classifiers (RoBERTa, DistilRoBERTa) on topic assignment ([results](docs/documentation-v2/DOCUMENTATION_V2.md#41-choosing-a-model-spring-2026)). |
+| Apr–Jul | Text extraction server, the 12-topic 1–5 rubric, the LLM pipeline and [Documentation V1](docs/documentation-v2/DOCUMENTATION_V2.md#2-project-timeline). |
+| Jul–Sep | Pilot. Instructors received reports through the Professor Portal; 17 rated it (mean 4.82 for ease of use, 4.35 for trusting the analysis) ([survey](docs/documentation-v2/DOCUMENTATION_V2.md#43-what-instructors-said-pilot-august-to-september-2026)). |
+| Oct 7–8 | Pipeline rebuilt: whole answers with their survey question, one structured call per answer, parallel and cached. Topic F1 went from 0.815 to 0.857, score error from 0.38 to 0.27, and time for 88 comments from 525 s to 28.5 s ([details](docs/documentation-v2/DOCUMENTATION_V2.md#42-rebuilding-the-pipeline-october-2026)). |
+| Nov 1–2 | Merged web app: accounts with approval, AI budgets and encrypted own keys, uploads, private reports, comparison across terms, and a redesigned, accessible interface ([what changed](docs/documentation-v2/DOCUMENTATION_V2.md#3-what-changed-and-why)). |
+
 ## Architecture
 
 ```
