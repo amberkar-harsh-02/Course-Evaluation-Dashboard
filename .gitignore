@@ -23,6 +23,8 @@ NLP/results/
 NLP/HUMAN_*.csv
 NLP/eval_runs/
 NLP/cache/
+CourseEvalApp/backend/*.db
+CourseEvalApp/backend/storage/
 *.pdf
 
 # Local tooling / OS

@@ -36,6 +36,7 @@ comment.
 | `dashboard/` | Admin React app. Batch-uploads evaluation files, picks the LLM, shows run history and downloads reports as a ZIP. | 5173 |
 | `ProfessorPortal/frontend/` | Professor-facing React app. Professors load their JSON report to see scores, charts, topic summaries and comments. They can ignore comments for a topic, which recalculates the scores, and export the edited JSON. | `/course-eval/` |
 | `ProfessorPortal/backend/` | Optional FastAPI + PostgreSQL + JWT backend for professor accounts and stored reports. The current portal UI doesn't use it yet. | 8080 |
+| `CourseEvalApp/backend/` | **New merged app (in progress).** Phase 1: professor registration, admin approval, sign-in, with a Postgres/SQLite database. See [CourseEvalApp/backend/README.md](CourseEvalApp/backend/README.md). | 8010 |
 
 ## Setup
 

@@ -1,0 +1,10 @@
+# Merged Course Eval app backend (accounts, approval; later: credits, reports)
+fastapi>=0.110
+uvicorn>=0.29
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+PyJWT>=2.8
+bcrypt>=4.1
+email-validator>=2.1
+python-dotenv>=1.0
+pydantic>=2.7
