@@ -32,3 +32,6 @@ CourseEvalApp/backend/storage/
 .vscode/
 .idea/
 .DS_Store
+
+# Local scripts that build the documentation figures, LaTeX and PDF
+docs/documentation-v2/tools/

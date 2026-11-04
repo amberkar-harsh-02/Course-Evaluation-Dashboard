@@ -1,20 +1,19 @@
 # Course Evaluation Analytics Platform: Documentation V2
 
-**Project history, design and results, from the first prototype to the merged web app**
+**Project history, design and results, from the first prototype to the web app in development**
 
 | | |
 |---|---|
-| Version | 2.0, November 2, 2026 (replaces Documentation V1, July 16, 2026) |
-| Author | Harsh Amberkar, California State University, Monterey Bay. `TODO (author): add co-authors, advisor and lab name` |
-| Live site | `https://secotterlab.org/course-eval-app/` (pilot portal: `/course-eval/`) |
+| Version | 2.0, November 2026. Replaces Documentation V1, July 16, 2026 |
+| Author | Harsh Amberkar, California State University, Monterey Bay |
+| Pilot portal | `https://secotterlab.org/course-eval/` |
 | Source code | `github.com/amberkar-harsh-02/Course-Evaluation-Dashboard` |
-| Status | In use on the lab server; cloud hosting deferred |
+| Status | Prototype 1 piloted with faculty (August to September 2026) and improved from their feedback (October 2026). A merged web application is in development. |
 
 > **How to read this document.** Sections 1, 5 and 6 update the three chapters of Documentation V1 (product overview,
 > pipeline pillars, dashboard metrics) so they describe the system as it works today. Sections 2 to 4 and 7 to 10 are
-> new: the project timeline, what changed and why, the measured results, the web application, the evaluation method,
-> privacy and the lessons learned. Every number has its source next to it. Places where a fact still has to be
-> confirmed are marked `TODO (author)`.
+> new: the timeline, what changed and why, the measured results, the website, the evaluation method, privacy, and
+> what comes next. Measured results cite the file they come from.
 
 ## Abstract
 
@@ -22,13 +21,13 @@ Open-ended comments in end-of-term course evaluations are the richest feedback i
 use: a class of a hundred students produces hundreds of loosely structured remarks that are slow to read and easy to
 misjudge. This project built a system that reads an evaluation export, assigns each student answer to one or more of
 twelve teaching topics, scores it from 1 to 5 against a topic-specific rubric, and presents the results to the
-instructor as an interactive report. Over 2026 the system moved from a research comparison of four language models,
-through a pilot in which 17 instructors rated the reports (mean 4.35 of 5 for trusting that the analysis represents
-their students' feedback), to a self-service web application with accounts, cost controls and term-to-term comparison.
-A review in October 2026 rebuilt the analysis pipeline. Keeping each answer whole, giving the model the survey question,
-and asking for topics and scores in one structured call raised topic agreement with human labels from F1 0.815 to
-0.857, lowered the score error from 0.38 to 0.27 points on the 1 to 5 scale, and cut processing time for the 88-comment
-benchmark from 525 s to 28.5 s.
+instructor as an interactive report. Over 2026 the project compared language models run locally, chose hosted models,
+and sent a first prototype to faculty in August. Nineteen survey responses rated it highly for ease of use (mean 4.84
+of 5) and well for trust in the analysis (4.21). Their feedback led to an improved pipeline in October: keeping each answer whole,
+giving the model the survey question, and asking for topics and scores in one structured call raised topic agreement
+with human labels from F1 0.815 to 0.857, lowered the score error from 0.38 to 0.27 points on the 1 to 5 scale, and
+cut processing time for the 88-comment benchmark from 525 s to 28.5 s. The analysis pipeline and the faculty portal
+are now being merged into one self-service web application.
 
 ## 1. Product overview
 
@@ -43,8 +42,8 @@ a note whenever a topic rests on too few comments to rely on.
 
 - **Instructors**, who want a fast and trustworthy summary of what students said, without losing the individual
   comments behind each number, so they can see what is working and what to change.
-- **Administrators and the research team**, who approve accounts, control the shared AI budget, and need a consistent
-  view of feedback across courses without hand-coding open-ended responses.
+- **The research team and administrators**, who run the analyses today and need a consistent view of feedback across
+  courses without hand-coding open-ended responses.
 
 ### What problem it solves
 
@@ -55,71 +54,73 @@ weighing such feedback by hand is slow and inconsistent. The platform:
 - separates multi-topic answers so mixed feedback does not blur together;
 - scores each topic against a fixed rubric instead of an impressionistic skim;
 - flags when the evidence behind a score is too thin to act on;
-- delivers the result as a private, interactive web report that can be compared across terms.
+- delivers the result as an interactive report rather than a static spreadsheet.
 
 ### The technology today
 
 | Layer | What it is |
 |---|---|
 | Text extraction ("OCR") server | Python, FastAPI. Reads PDF, Excel, CSV and Word exports and returns each student answer whole with its question, plus the multiple-choice rating tables. |
-| Analysis pipeline | Python. One structured call per answer to OpenAI `gpt-5.6-terra` (default) or, for the research team only, a local Qwen model on the lab Mac Studio. Parallel and cached. |
-| Web application | FastAPI backend with PostgreSQL; React front end. Accounts with administrator approval, per-instructor AI budgets, uploads with live progress, private reports, comparison across terms. |
+| Analysis pipeline | Python. One structured call per answer to a hosted model (OpenAI `gpt-5.6-terra` by default), or to a local Qwen model on the lab Mac Studio for the research team. Parallel and cached. |
+| Admin dashboard | React. The research team uploads evaluation files, runs the analysis and downloads the reports. |
+| Professor Portal | React. Instructors open their report to see scores, charts, topic summaries and comments, ignore comments that do not apply, and export the result. |
+| In development | One merged web application in which instructors sign in, upload their own files and keep their reports (Section 3.2). |
 
 ## 2. Project timeline
 
-![Project timeline, 2026](figures/timeline.png)
+![Project timeline by month, 2026](figures/timeline.png)
 
-*Figure 1. Phases of the project. Dates come from the git history (26 commits, April 13 to November 2, 2026), document
-metadata and file timestamps.*
+*Figure 1. The project month by month.*
 
-| When (2026) | Phase | What happened | Source |
-|---|---|---|---|
-| Spring, before April | Model comparison research | Four approaches compared against human labels: two local LLMs (Llama3, Gemma 3) and two transformer classifiers (RoBERTa-large-MNLI, DistilRoBERTa). LLMs clearly ahead (Section 4.1). | `NLP/experiments.md`, `NLP/results/*_comparison.csv`. `TODO (author): exact dates` |
-| Planning | Architecture and data contract | Initial plan: a Node/Express server reading a JSON file produced on the lab Mac Studio, free models only, ten themes, and a decision on how to extract text safely. | `NLP/Projnotes1.docx` |
-| April 13 | Text extraction server | FastAPI server with DOCX (python-docx) and PDF (pdfplumber) extraction and text sanitization; first commit. | git, `NLP/WorkLog/Development_Notes_Apr_13.docx` |
-| April 23 | Rubric design | Rubric moved from 0 to 4 to **1 to 5** (so a high score always means positive and no instructor sees a zero); Pace and Workload measured separately; several themes merged or split, giving the final **12 topics**. | `NLP/Drivenotes/` (meeting notes) |
-| June 12 | Methodology guide | Six-step method documented: normalization and de-duplication, retrieval of similar human-graded examples (RAG), evidence-based topic classification, rubric scoring, quote grounding, summarization. Model: Llama3. | `CourseEval_info.pdf` |
-| June | Model trials on real files | Qwen, Llama, Gemma, Claude Sonnet and OpenAI outputs produced for the pilot files. | `First deployment/Test-*` folders |
-| June 24 to July 16 | Manuals and V1 | Platform manual (June 24) and **Documentation V1** (July 16): five engineering pillars, two prompts per comment, confidence thresholds. | the two PDFs |
-| July to September 15 | Pilot | Reports produced for the pilot instructors and shared as JSON files; instructors opened them in the Professor Portal. **17 feedback-form responses** between August 6 and September 15. | `First deployment/Feedback/`. `TODO (author): number of invited instructors and courses` |
-| October 7 to 8 | Consolidation and backend review | All parts brought into one repository. Review and rebuild of extraction and analysis; evaluation harness and automated tests added (Section 4.2). | git, `docs/Backend_Improvements_Report.pdf` |
-| October 28 | Portal fixes | Stray bullet symbols removed from comments; "ignore comments" with score recalculation and JSON export added to the portal. | git |
-| November 1 | Merged web application | Accounts with administrator approval; credit modes and dollar caps; encrypted personal API keys; uploads and background jobs; PostgreSQL; comparison across terms. Phase 0 purchase estimate. | git, `docs/Phase0_Purchase_Estimate.pdf` |
-| November 2 | Design and usability | Report screen rebuilt on the original dashboard layout; dark mode; sidebar topic tree; first-visit Guide; new upload page; accessible colour scheme. | git |
+| When (2026) | Phase | What happened |
+|---|---|---|
+| April | Planning and text extraction | Architecture, data format and themes planned. April 13: first version of the text extraction server (FastAPI, Word and PDF). April 23: rubric meeting; the scale moved from 0 to 4 to **1 to 5** so a high score always means positive and no instructor sees a zero, Pace and Workload were separated, and themes were merged or split into the final **12 topics**. |
+| May | Testing AI models locally | Local language models and classifiers were run and compared against human labels: Llama3, Gemma 3, Qwen, RoBERTa-large-MNLI and DistilRoBERTa (Section 4.1). |
+| June | Choosing the models | June 12: methodology guide (normalization, retrieval of similar human-graded examples, evidence-based topic classification, rubric scoring, quote grounding, summaries). After trials on real evaluation files, the hosted models **GPT (`gpt-5.6-terra`)** and **Claude Sonnet** were chosen; local Qwen stayed available for the research team. June 24: first platform manual. |
+| July | Documentation V1 and pilot preparation | July 16: **Documentation V1** (five engineering pillars, two prompts per comment, confidence thresholds). Reports generated for the pilot instructors and the Professor Portal prepared. |
+| August | Prototype 1 sent | **Prototype 1** went out: each pilot instructor received a JSON report through Google Drive and opened it in the Professor Portal, with a user manual and a feedback form. First responses on August 6. |
+| September | Collecting feedback | Responses kept arriving until September 29: **19 in total** (Section 4.3). |
+| October | Improving from the feedback | Interface changes requested by instructors, including **drag-and-drop upload**; "ignore comments" with score recalculation and JSON export in the portal. **Text extraction (OCR) fixed** and the **analysis pipeline improved** to cut the time to process a document: whole answers with their questions, one structured call per answer, parallel and cached calls, plus an evaluation harness and automated tests (Section 4.2). |
+| November | Merging into one web app (in progress) | Work under way to merge the analysis pipeline and the portal into one application with instructor accounts, AI budgets and private reports (Section 3.2). Cost estimate for a year of use prepared (Section 4.4). Claude Sonnet dropped so that one provider handles cost tracking and personal API keys. |
 
 ## 3. What changed and why
 
-![Architecture then and now](figures/architecture.png)
+![How an evaluation file becomes a report, in three stages](figures/flowchart.png)
 
-*Figure 2. Top: the pilot set-up, in which the research team ran each file and sent the instructor a JSON report.
-Bottom: the merged application, in which instructors run their own analyses.*
+*Figure 2. Flowchart of how an evaluation file becomes a report: in prototype 1 (left), with the improved pipeline of
+October (middle), and in the merged app being developed (right, dashed). Parallelograms are files, rectangles are steps,
+diamonds are decisions, rounded boxes are where a person starts or finishes, and the cylinder is the database.*
 
-### 3.1 From V1's five pillars to the current pipeline
+### 3.1 From V1's five pillars to the October pipeline
 
-| V1 pillar (July 2026) | What it did then | What it does now | Why it changed |
+| V1 pillar (July 2026) | What it did in prototype 1 | What it does after October | Why it changed |
 |---|---|---|---|
-| 1. Configuration and rules | Local Qwen model; per-topic confidence thresholds (0.35 to 0.45); keyword hints that forced extra topics. | OpenAI `gpt-5.6-terra` by default with a provider-enforced JSON schema; local Qwen kept for the research team. Thresholds kept (Section 6). Keyword forcing **removed**. | Keyword rules added topics the model then had to reject. A hosted model with schema enforcement removed malformed answers. |
-| 2. Data preparation and RAG | Cleaned text; split answers into **sentences**; retrieved similar human-labelled examples. | Keeps each **answer whole** with its survey question; skips answers to questions about the student rather than the teaching; still retrieves examples (2 for topics, 1 for scoring) when the labelled files are present. | Splitting turned one answer into many "comments" (one file: 410 fragments for 123 real answers) and made fragments uninterpretable. Answers to non-teaching questions filled the "Other" bin (about 25 % of comments). |
+| 1. Configuration and rules | Local Qwen model or a hosted model; per-topic confidence thresholds (0.35 to 0.45); keyword hints that forced extra topics. | Hosted model by default with a provider-enforced JSON schema; local Qwen kept for the research team. Thresholds kept (Section 6). Keyword forcing **removed**. | Keyword rules added topics the model then had to reject. Schema enforcement removed malformed answers. |
+| 2. Data preparation and RAG | Cleaned text; split answers into **sentences**; retrieved similar human-labelled examples. | Keeps each **answer whole** with its survey question; skips answers to questions about the student rather than the teaching; still retrieves examples (2 for topics, 1 for scoring) when the labelled files are present. | Splitting turned one answer into many "comments" (one file: 410 fragments for 123 real answers) and made fragments hard to interpret. Answers to non-teaching questions filled the "Other" bin (about 25 % of comments). |
 | 3. Categorization engine (prompt 1) | One call to pick topics. | Merged into a single structured call. | Two calls per topic cost time and money and gave lower accuracy (Section 4.2). |
-| 4. Scoring engine (prompt 2) | One more call per assigned topic. | Same call returns, per topic, a 1 to 5 score, confidence, evidence quote and, for Pace, the direction (too fast, too slow, about right). | As above. Pace previously used a non-monotonic code (1 = too fast, 2 = too slow, ...), so its average was meaningless; it now runs from 1 (serious problem) to 5 (well paced) with a separate direction. |
-| 5. Main loop and export | Sequential calls; JSON and CSV export. | Up to 8 parallel calls (2 for the local model); answers cached so an unchanged re-run is free; every dropped result and model error is counted in the report; reports stored in PostgreSQL per owner. | A large file took up to 78 minutes; silent drops hid how much of a report rested on uncertain results. |
+| 4. Scoring engine (prompt 2) | One more call per assigned topic. | The same call returns, per topic, a 1 to 5 score, confidence, evidence quote and, for Pace, the direction (too fast, too slow, about right). | As above. Pace previously used a non-monotonic code (1 = too fast, 2 = too slow, ...), so its average was meaningless; it now runs from 1 (serious problem) to 5 (well paced) with a separate direction. |
+| 5. Main loop and export | Sequential calls; JSON and CSV export. | Up to 8 parallel calls (2 for the local model); answers cached so an unchanged re-run is free; every dropped result and model error is counted in the report. | A large file took up to 78 minutes; silent drops hid how much of a report rested on uncertain results. |
 
-### 3.2 From a shared file to a self-service application
+### 3.2 Where the project is heading: one web application (in progress)
 
-| Then (pilot) | Now (merged app) |
+Prototype 1 depended on the research team for every step. The merged application is being built so instructors can
+do the whole process themselves. The table compares prototype 1 with the goals of the merge; none of these features
+has been released yet.
+
+| Prototype 1 | Goal of the merged app |
 |---|---|
-| The research team uploaded each file in an admin dashboard and sent the instructor a JSON file through Google Drive. | Instructors sign in, upload their own file, watch progress, and find the report under My reports. |
-| Anyone could load any JSON file into the portal. | Each report belongs to one account and only its owner can open it. |
-| One shared sign-in; no personal accounts or approval. | Registration, administrator approval, password rules and lock-out after repeated failed sign-ins. |
-| All AI usage on the lab key, untracked. | Every run records tokens and cost. The administrator sets each instructor to lab credit with a yearly dollar cap (default $20), lab credit without a cap, or the instructor's own OpenAI key, stored encrypted. |
-| One report at a time. | Comparison of two or more reports of the same course across terms, with a trend chart and per-topic change. |
-| User manual as a separate PDF. | Guide page shown on first sign-in and always available in the sidebar. |
+| The research team uploads each file and sends the instructor a JSON report through Google Drive. | Instructors sign in, upload their own file, follow its progress, and find the report in their account. |
+| The instructor loads a file into the portal; reports are not stored. | Reports are stored on the server, and each one can be opened only by the account that created it. |
+| No personal accounts. | Registration with administrator approval, password rules, and lock-out after repeated failed sign-ins. |
+| All AI use on the lab's key, not tracked per person. | Every run records its tokens and cost. The administrator gives each instructor lab credit with a yearly dollar cap, lab credit without a cap, or the option to use their own OpenAI key, stored encrypted. |
+| One report at a time. | Comparison of two or more reports of the same course across terms. |
+| A separate PDF manual. | A built-in guide shown on first sign-in. |
 
 ## 4. Results
 
-### 4.1 Choosing a model (spring 2026)
+### 4.1 Choosing a model (May to June 2026)
 
-The first study compared four approaches against human labels. Topic classification was measured on the benchmark
+The local comparison measured each approach against human labels. Topic classification was measured on the benchmark
 comments that could be matched to the human-labelled file (27 of 29); sentiment scoring on 195 human-scored
 comment-topic pairs.
 
@@ -133,20 +134,22 @@ comment-topic pairs.
 
 *Source: `NLP/results/topic_model_comparison.csv` and `NLP/results/sentiment_model_comparison.csv`.*
 
-Two findings shaped the rest of the project. First, zero-shot transformer classifiers could not assign the twelve
-topics reliably, so the project committed to LLMs. Second, course evaluations are skewed positive: a constant
-prediction of 5 already matches 63.6 % of human scores, so exact-match accuracy alone is a weak measure. Later
-evaluations therefore report the mean absolute error (MAE) and agreement on positive or negative sentiment as well.
+Two findings shaped the next steps. First, zero-shot transformer classifiers could not assign the twelve topics
+reliably, so the project committed to large language models; the trials on real files in June then led to the hosted
+models. Second, course evaluations are skewed positive: a constant prediction of 5 already matches 63.6 % of human
+scores, so exact-match accuracy alone is a weak measure. Later evaluations therefore also report the mean absolute
+error (MAE) and agreement on positive or negative sentiment.
 
-### 4.2 Rebuilding the pipeline (October 2026)
+### 4.2 Improving the pipeline (October 2026)
 
-The October review found that most errors came from what the model was given rather than from the model itself. After
+The October work found that most errors came from what the model was given rather than from the model itself. After
 the changes in Section 3.1 the pipeline was measured again on the same 88 human-labelled comments with the same model
 (`gpt-5.6-terra`, retrieval examples on).
 
-![Accuracy and runtime before and after the rebuild](figures/results.png)
+![Accuracy and runtime before and after the pipeline improvements](figures/results.png)
 
-*Figure 3. Agreement with human labels and processing time before (October 7) and after (October 8) the rebuild.*
+*Figure 3. Agreement with human labels and processing time before and after the pipeline improvements (measured October 7
+and 8).*
 
 | Measure (88 human-labelled comments) | Before | After |
 |---|---|---|
@@ -162,11 +165,11 @@ the changes in Section 3.1 the pipeline was measured again on the same 88 human-
 `NLP/eval_runs/20261008_131258_openai/summary.json` (prompt version 2026-10-08.4: topic metrics on 29 matched comments,
 score metrics on 157 comment-topic pairs).*
 
-Per-topic F1 after the rebuild ranged from 1.0 (communication and availability) and 0.96 (learning resources) down to
+Per-topic F1 with the improved pipeline ranged from 1.0 (communication and availability) and 0.96 (learning resources) down to
 0.50 (inclusivity) and 0.0 (grading and feedback). With only 29 comments in the topic benchmark, the weakest topics rest
-on very few labelled examples; a larger labelled set is the main item of future work (Section 10).
+on very few labelled examples; a larger labelled set is a main item of future work (Section 10).
 
-On three real files the rebuild changed what reached the model and how long it took:
+On three real files the improvements changed what reached the model and how long it took:
 
 | File | Units sent to the model | Share left uncategorized | Processing time |
 |---|---|---|---|
@@ -175,49 +178,48 @@ On three real files the rebuild changed what reached the model and how long it t
 | Converted Excel report | 32 fragments, now 16 answers | 9 % to 0 % | 118 s to 8 s |
 
 *Source: `docs/Backend_Improvements_Report.pdf`.* Overall scores moved slightly (for example 3.62 to 3.97) because long
-answers are no longer counted several times. Pace averages from before October 8 are not comparable with later ones
-because the Pace rubric was corrected.
+answers are no longer counted several times. Pace averages from prototype 1 are not comparable with later ones because
+the Pace rubric was corrected.
 
-### 4.3 What instructors said (pilot, August to September 2026)
+### 4.3 What instructors said about prototype 1 (August to September 2026)
 
-Seventeen pilot instructors completed a feedback form after receiving their report. Items used a 1 (strongly disagree)
-to 5 (strongly agree) scale.
+Pilot instructors completed a feedback form after receiving their report: 19 responses between August 6 and
+September 29, 2026. Items used a 1 (strongly disagree) to 5 (strongly agree) scale.
 
 ![Pilot faculty survey](figures/pilot_survey.png)
 
-*Figure 4. Responses to the pilot feedback form (n = 17). Only aggregate counts are shown.*
+*Figure 4. Responses to the prototype 1 feedback form (n = 19). Only aggregate counts are shown.*
 
-- **Usability was rated highest.** The structure was easy to follow (mean 4.82), the graphs helped interpret the
-  results (4.65) and the comment counts were useful (4.53).
+- **Usability was rated highest.** The structure was easy to follow (mean 4.84), the graphs helped interpret the
+  results (4.68) and the comment counts were useful (4.47).
 - **Accuracy was rated well, with room to improve.** The topics reflected the comments (4.53); the summaries captured
-  the main themes (4.35); the sentiment matched the instructor's own reading (4.24). Fifteen of 17 called the tone of
-  the analysis "about right" (one each "too critical" and "too positive").
-- **New insight was rated lowest.** "Revealed insights I had not noticed" averaged 3.82, the only item below 4. This
+  the main themes (4.16); the sentiment matched the instructor's own reading (4.05); and respondents trusted that the
+  analysis represents their students' feedback (4.21). Fifteen of 19 called the tone of the analysis "about right",
+  three "too critical" and one "too positive".
+- **New insight was rated lowest.** "Revealed insights I had not noticed" averaged 3.74, the only item below 4. This
   suggests the tool mainly organizes and confirms what attentive instructors already sense, and its value lies in the
   time saved and the evidence it collects.
-- **Intended use was strong.** Instructors would use it to inform course revisions (4.35) and after every evaluation
-  cycle (4.35), and somewhat less as evidence of teaching effectiveness (4.18).
+- **Intended use was strong.** Instructors would use it to inform course revisions (4.32) and after every evaluation
+  cycle (4.26), and somewhat less as evidence of teaching effectiveness (4.05).
 
-*Source: aggregate counts from the pilot feedback form (`First deployment/Feedback/`, not in the repository). The
-form's free-text answers informed the features in Section 3.2. `TODO (author): add a short thematic summary of the
-free-text answers.`*
+*Source: aggregate answer counts from the prototype 1 feedback form export (19 responses; not in the repository).*
 
-The pilot feedback and the research team's own list led directly to the next phase: fix extraction, add drag-and-drop
-upload and comment search, add sign-up so instructors keep their own reports, let instructors exclude comments and
-recalculate, add export, show more detail per topic, and compare courses or terms.
+The feedback set the October work: easier uploading (drag and drop), more reliable text extraction, faster processing,
+the ability to leave out comments that do not apply and recalculate, and export. Requests that need accounts and
+stored reports, such as comparing courses or terms, moved into the merged application.
 
-### 4.4 Cost
+### 4.4 Cost estimate for the merged app
 
-A typical file costs a few cents to about a dollar. The Phase 0 estimate measured prompt sizes offline: about 3,000
-input tokens per answer, of which about 2,500 are the fixed rubrics, and about 250 output tokens. An average file has
-186 answers, about 153 of which are analysed. At 250 files a year that comes to roughly **$230 to $500** of OpenAI usage,
-depending on prompt caching and list price. *Source: `docs/Phase0_Purchase_Estimate.pdf`.* Since November every run
-records its actual token use and cost, so this estimate can be replaced by measured figures after a full term.
-`TODO (author): add measured cost per file once available.`
+For the merged application, where instructors will run their own analyses, a year of use was estimated from offline
+prompt measurements: about 3,000 input tokens per answer (about 2,500 of them the fixed rubrics) and about 250 output
+tokens. An average file has 186 answers, of which about 153 are analysed. At 250 files a year this comes to roughly
+**$230 to $500** of OpenAI usage, depending on prompt caching and list price, so a typical file costs a few cents to
+about a dollar. *Source: `docs/Phase0_Purchase_Estimate.pdf`.* The pipeline now records the tokens and cost of every
+run, so the estimate can be replaced by measured figures once the app is in use.
 
 ## 5. How the analysis works now
 
-This chapter replaces V1's "Core functional pillars".
+This chapter replaces V1's "Core functional pillars" and describes the improved pipeline from October 2026.
 
 ### Step 1: Extraction
 
@@ -265,15 +267,15 @@ file costs nothing.
 
 ## 6. Dashboard metrics explained
 
-This chapter replaces V1's chapter 3. What it says about averages and multi-topic answers still holds; the changes are
-in how the overall grade is formed and in the reliability flags.
+This chapter replaces V1's chapter 3. What V1 said about averages and multi-topic answers still holds; the changes
+are in how the overall grade is formed and in the reliability flags.
 
 - **Topic score.** The mean of the valid 1 to 5 scores for that topic. Answers that mention a topic without evaluating
-  it ("Labs") still appear on the topic for context but are not part of the average. The number of comments on a topic
-  and the number of scored comments can therefore differ, by design.
+  it ("Labs") still appear on the topic for context but are not part of the average, so the number of comments on a
+  topic and the number of scored comments can differ, by design.
 - **Overall grade.** The mean, over answers, of each answer's average topic score. A long answer touching five topics
   counts once, like a short one, and cannot outweigh it.
-- **General sentiment.** Generic praise or criticism is shown separately and never changes the overall grade.
+- **General sentiment.** Generic praise or criticism is reported separately and never changes the overall grade.
 - **Multi-topic answers.** Each topic gets its own independent score. "The pace was too fast, but the homework was
   great" produces a low Pace score and a high assignments score, not one muddled average.
 - **Pace direction.** Alongside its score, Pace reports how many answers said too fast, too slow or about right.
@@ -283,64 +285,61 @@ in how the overall grade is formed and in the reliability flags.
   - *mixed confidence*: some scores rest on low model confidence (below 0.35), so read the comments;
   - *needs review*: a model error was excluded;
   - *unscored*: no scored comments.
+- **Ignoring comments.** An instructor can exclude comments that do not apply to a topic (for example, a remark about a
+  different course). The topic and overall scores are recalculated with the same rules as the pipeline, and the
+  excluded comments stay visible, marked as ignored.
 
-  On the website, topics with fewer than five scored comments are faded and labelled "few".
-- **Score colours.** Below 2.5 is red, 2.5 to 3.75 amber, and above 3.75 green. The number is always shown with the
-  colour, never instead of it, and every colour meets WCAG AA contrast in light and dark mode.
-- **Ignoring comments.** On a topic page an instructor can exclude comments that do not apply (for example, a remark
-  about a different course). The topic and overall scores are recalculated with the same rules as the pipeline, and
-  the excluded comments stay visible, crossed out.
+## 7. The website: prototype 1, October changes and the app in development
 
-## 7. The website then and now
+![The Professor Portal in prototype 1](figures/then_portal.png)
 
-![The pilot portal](figures/then_portal.png)
+*Figure 5. The Professor Portal in prototype 1: the instructor loaded the JSON report shared by the research team.
+Shown above the comment list only; course identity removed.*
 
-*Figure 5. The pilot Professor Portal (July to October 2026): the instructor loaded a JSON file shared by the research
-team. Shown above the comment list only; course identity removed.*
+**Prototype 1 (August).** Instructors downloaded their JSON report from a shared Google Drive folder and loaded it
+into the Professor Portal. The portal showed the overall grade, a category chart that switched between bar and radar,
+a score card for each topic, a detailed view per topic with its comments and summary, and a filterable comment list.
 
-![The current report overview](figures/now_overview.png)
+**After the feedback (October).** Uploading moved to drag and drop; comments that do not apply can be ignored for a
+topic, the scores recalculated, and the edited report exported; comment text is cleaned of stray symbols; and reports
+arrive much faster because of the improved pipeline.
 
-*Figure 6. The current report overview, with illustrative data: overall grade, category chart (bar or radar), topic
-cards, and the topics of the open report in the sidebar.*
+**The merged app (in development).** The goal is one site where instructors:
 
-![Topic pop-up](figures/now_topic.png)
+1. request an account and, once approved, are welcomed with a short guide;
+2. upload an evaluation file and follow its progress;
+3. read the report: overall grade, category chart, topic cards, a detail view per topic, and a searchable list of
+   every analysed comment;
+4. ignore comments and recalculate, and download the report;
+5. compare two or more terms of the same course;
+6. see the AI credit left for the year, or add their own OpenAI key.
 
-*Figure 7. Selecting a topic opens a quick view with the score spread, sentiment counts, Pace direction, summary and
-comments; "View more details" opens the full topic page (illustrative data).*
+Its interface is still changing, so the figures below are placeholders until it is finalized.
 
-![Comparing terms](figures/now_compare.png)
+![Report overview (placeholder)](figures/placeholder_overview.png)
 
-*Figure 8. Comparison of two terms of the same course (illustrative data).*
+*Figure 6. Placeholder for the report overview in the merged app.*
 
-What changed for instructors, in the order they meet it:
+![Topic detail (placeholder)](figures/placeholder_topic.png)
 
-1. **Access.** They request an account, are approved by the administrator, and on first sign-in land on a Guide that
-   explains the site. The Guide stays available in the sidebar.
-2. **Upload.** They drag in an evaluation file (PDF, Word, Excel or CSV, up to 25 MB). The page checks the file type and
-   size before uploading and shows progress in three steps: reading the file, analysing comments, writing summaries.
-3. **Report.** Overall grade, category chart, topic cards, a pop-up and full page per topic, and a searchable,
-   filterable list of every analysed comment. The open report's topics are listed in the sidebar.
-4. **Adjust and export.** They can ignore comments for a topic and recalculate, and download the report as JSON.
-5. **Compare.** They can select two or more reports to see how each topic changed between terms.
-6. **Account.** They can see the AI credit left this year, add or replace their own OpenAI key, and change their password.
+*Figure 7. Placeholder for the topic detail view in the merged app.*
 
-The design moved from a generic dashboard look to a restrained academic style: IBM Plex Serif and Sans, sentence-case
-labels, a light and a dark theme, short animations that respect the device's reduced-motion setting, and a
-red-amber-green score scale checked for contrast.
+![Comparing terms (placeholder)](figures/placeholder_compare.png)
+
+*Figure 8. Placeholder for comparing terms in the merged app.*
 
 ## 8. Evaluation method
 
 - **Ground truth.** Two human-labelled files: topic assignments for benchmark comments
   (`HUMAN_CATEGORIZED_OUTPUT.csv`) and topic-level scores with reasoning (`HUMAN_SENTIMENT_BASELINE.csv`).
-  `TODO (author): describe who labelled them, the labelling instructions, and inter-rater agreement if measured.`
 - **Topic metrics.** Micro and macro F1 over the twelve topics plus "Other", and the share of comments whose full topic
   set matches exactly.
 - **Score metrics.** MAE on the 1 to 5 scale; share of exact and within-1 matches; agreement on positive (4 to 5) versus
   negative (1 to 2) sentiment; coverage (the share of human-scored pairs the model also scored).
 - **Harness.** `NLP/eval.py` runs the pipeline on the labelled comments and writes a summary per run to `NLP/eval_runs/`.
   Every change in Section 3.1 was measured this way before it was kept.
-- **Automated tests.** 83 tests (35 for the analysis pipeline and its API, 48 for the web application) use a fake model,
-  so they cost nothing and never touch student data.
+- **Automated tests.** Tests for the analysis pipeline and its API use a fake model, so they cost nothing and never
+  touch student data; the merged app is being built with its own test suite.
 - **Limitations.** The labelled benchmark is small (88 comments; 29 for topic metrics) and comes from a small number of
   courses, so per-topic results for rare topics are unstable. The model is a commercial API whose behaviour can change
   between versions; each report records the model ID and prompt version. The pilot survey is self-reported by
@@ -348,25 +347,27 @@ red-amber-green score scale checked for contrast.
 
 ## 9. Privacy, security and data handling
 
-- **Reports are private.** Each report belongs to the account that created it. Administrators see how many reports a
-  user has, not their contents.
-- **Accounts.** Registration requires administrator approval. Passwords are stored with bcrypt, must be at least ten
-  characters and mix letters with numbers or symbols. Five wrong passwords lock the account for 15 minutes. Sign-in
-  tokens expire after two hours, and changing a password signs out other sessions.
-- **Personal API keys.** They are encrypted at rest with Fernet (AES-128-CBC with HMAC), shown only as the last four
-  characters, decrypted only in memory during a run, and never logged.
-- **Cost control.** Every run records tokens and cost per user. A run is refused before it starts if the user's yearly cap
-  has already been reached.
-- **Hosting.** The application, database and text extraction run on the lab's server behind HTTPS (Caddy). The API
-  and extraction services listen only on the local machine. The database is backed up nightly and kept for 14 days.
-- **Student data in the repository.** None. Raw evaluations, generated reports, the human-labelled files and the
-  model cache are excluded from version control. Screenshots in this document use made-up demo data, except Figure 5,
-  which is cropped so no student text appears.
-- **Third-party processing.** Comments are sent to OpenAI for analysis unless the local model is chosen.
-  `TODO (author): note the institution's review or approval for processing evaluation data, and any data-processing
-  agreement.`
+**In place today**
 
-## 10. Lessons learned and future work
+- **Who runs analyses.** Only the research team uploads evaluation files and runs the analysis.
+- **Server access.** The analysis server listens only on the local machine by default, accepts requests only from the
+  admin dashboard and can require an access key. Uploaded file names are cleaned so they cannot reach other folders,
+  and earlier reports are archived rather than overwritten.
+- **Sharing.** Each instructor receives only their own report.
+- **Student data in the repository.** None. Raw evaluations, generated reports, the human-labelled files and the
+  model cache are excluded from version control. Figure 5 is cropped so no student text appears.
+- **Third-party processing.** Comments are sent to the hosted model for analysis unless the local model is chosen.
+
+**Being built into the merged app**
+
+- Reports visible only to the account that created them.
+- Instructor accounts with administrator approval, hashed passwords, password rules and lock-out after repeated
+  failed sign-ins.
+- Personal API keys encrypted at rest, shown only as their last four characters, and never logged.
+- Per-instructor AI budgets, with every run's cost recorded.
+- A database backed up nightly.
+
+## 10. Lessons learned and next steps
 
 **Lessons**
 
@@ -377,27 +378,27 @@ red-amber-green score scale checked for contrast.
 3. **Fewer, structured calls beat more calls.** One schema-enforced call per answer was faster, cheaper and more
    accurate than separate classification and scoring calls.
 4. **Make uncertainty visible.** Instructors trusted the reports more when thin evidence was flagged rather than hidden.
-5. **Self-service needs guard rails.** Opening the tool to instructors required approval, budgets and key handling as
-   much as features.
+5. **Pilot early.** Prototype 1 showed what instructors valued (clarity, charts, comment counts) and what they needed
+   next (easier upload, speed, control over comments, comparison across terms).
 
-**Future work**
+**Next steps**
 
+- Finish, test and release the merged web application.
 - Enlarge and diversify the labelled benchmark, especially for rare topics, and measure inter-rater agreement.
 - Read rating tables from PDF exports.
-- Move hosting to a managed cloud provider once funding is confirmed (estimate in `docs/Phase0_Purchase_Estimate.pdf`).
-- Replace the cost estimate with measured cost per file after a full term.
+- Move hosting to a managed cloud provider once funding is confirmed.
+- Replace the cost estimate with measured cost per file.
 - Study whether instructors change their courses after using the reports (the pilot measured intent only).
 
 ## Appendix A. Commit timeline
 
-| Date | Change |
+| Date (2026) | Change |
 |---|---|
-| 2026-04-13 | FastAPI text extraction server with DOCX support; PDF extraction and text sanitization |
-| 2026-10-07 | Repository consolidated: OCR server, LLM pipeline and bridge API, admin dashboard, Professor Portal; ignore-comments mode with recalculation and export |
-| 2026-10-08 | Whole answers with questions and rating tables; single structured analysis, parallel calls, cache, jobs API, evaluation harness |
-| 2026-10-28 | Bullet symbols stripped from comments in the portal |
-| 2026-11-01 | Merged app: registration and approval; token usage and cost tracking; credit modes and encrypted keys; uploads, jobs and private reports; website; deploy scripts; comparison across terms; academic redesign |
-| 2026-11-02 | Dashboard layout restored with dark mode; sidebar topic tree, first-visit Guide, new upload page and motion; accessible colour scheme |
+| April 13 | FastAPI text extraction server with Word support; PDF extraction and text sanitization |
+| October 7 | Repository consolidated: extraction server, analysis pipeline and API, admin dashboard, Professor Portal; ignore-comments mode with recalculation and export |
+| October 8 | Whole answers with questions and rating tables; single structured analysis, parallel calls, cache, background jobs, evaluation harness |
+| October 28 | Bullet symbols removed from comments in the portal |
+| November | Merged web application in development |
 
 ## Appendix B. Where things are
 
@@ -406,10 +407,9 @@ red-amber-green score scale checked for contrast.
 | `OCR/` | Text extraction server |
 | `NLP/main.py`, `NLP/data.py` | Analysis pipeline; topic definitions and rubric |
 | `NLP/eval.py`, `NLP/experiments.md` | Evaluation harness; model comparison runbook |
-| `CourseEvalApp/` | Merged web application (backend and front end) and deploy scripts |
-| `ProfessorPortal/`, `dashboard/` | Pilot portal and admin dashboard (kept running) |
-| `docs/` | Backend review report, Phase 0 estimate, this document |
-| `docs/documentation-v2/tools/make_figures.py` | Rebuilds every figure in this document |
+| `ProfessorPortal/`, `dashboard/` | Professor Portal and admin dashboard |
+| `CourseEvalApp/` | Merged web application (in development) |
+| `docs/documentation-v2/` | This document, its figures, and the LaTeX version for Overleaf |
 
 ## Appendix C. Glossary
 

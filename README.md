@@ -16,17 +16,19 @@ comment.
 
 ## Project history
 
-The full story, with sources for every number, is in
-[Documentation V2](docs/documentation-v2/DOCUMENTATION_V2.md). A LaTeX version for Overleaf is in
-[`docs/documentation-v2/latex/`](docs/documentation-v2/latex/). In short, for 2026:
+The full story is in [Documentation V2](docs/documentation-v2/DOCUMENTATION_V2.md). A LaTeX version for Overleaf is
+in [`docs/documentation-v2/latex/`](docs/documentation-v2/latex/). In short, for 2026:
 
-| When | Milestone |
+| Month | Milestone |
 |---|---|
-| Spring | Four models compared against human labels. LLMs (Llama3, Gemma) beat transformer classifiers (RoBERTa, DistilRoBERTa) on topic assignment ([results](docs/documentation-v2/DOCUMENTATION_V2.md#41-choosing-a-model-spring-2026)). |
-| Apr–Jul | Text extraction server, the 12-topic 1–5 rubric, the LLM pipeline and [Documentation V1](docs/documentation-v2/DOCUMENTATION_V2.md#2-project-timeline). |
-| Jul–Sep | Pilot. Instructors received reports through the Professor Portal; 17 rated it (mean 4.82 for ease of use, 4.35 for trusting the analysis) ([survey](docs/documentation-v2/DOCUMENTATION_V2.md#43-what-instructors-said-pilot-august-to-september-2026)). |
-| Oct 7–8 | Pipeline rebuilt: whole answers with their survey question, one structured call per answer, parallel and cached. Topic F1 went from 0.815 to 0.857, score error from 0.38 to 0.27, and time for 88 comments from 525 s to 28.5 s ([details](docs/documentation-v2/DOCUMENTATION_V2.md#42-rebuilding-the-pipeline-october-2026)). |
-| Nov 1–2 | Merged web app: accounts with approval, AI budgets and encrypted own keys, uploads, private reports, comparison across terms, and a redesigned, accessible interface ([what changed](docs/documentation-v2/DOCUMENTATION_V2.md#3-what-changed-and-why)). |
+| April | Planning, the text extraction server, and the 12-topic rubric on a 1–5 scale. |
+| May | AI models tested locally against human labels. The LLMs beat transformer classifiers on topic assignment ([results](docs/documentation-v2/DOCUMENTATION_V2.md#41-choosing-a-model-may-to-june-2026)). |
+| June | Hosted models chosen (GPT `gpt-5.6-terra` and Claude Sonnet); methodology guide. |
+| July | Documentation V1 and pilot preparation. |
+| August | Prototype 1 sent to pilot instructors as JSON reports for the Professor Portal. |
+| September | 19 feedback responses: mean 4.84 for ease of use, 4.21 for trusting the analysis ([survey](docs/documentation-v2/DOCUMENTATION_V2.md#43-what-instructors-said-about-prototype-1-august-to-september-2026)). |
+| October | Changes from the feedback: drag-and-drop upload, OCR fixes, and an improved pipeline. Topic F1 went from 0.815 to 0.857, score error from 0.38 to 0.27, and time for 88 comments from 525 s to 28.5 s ([details](docs/documentation-v2/DOCUMENTATION_V2.md#42-improving-the-pipeline-october-2026)). |
+| November | Merging the pipeline and the portal into one web app, in progress ([plans](docs/documentation-v2/DOCUMENTATION_V2.md#32-where-the-project-is-heading-one-web-application-in-progress)). |
 
 ## Architecture
 
