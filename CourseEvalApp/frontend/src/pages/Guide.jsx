@@ -4,7 +4,7 @@ import PropTypes from 'prop-types';
 import { api } from '../api';
 import { useAuth } from '../auth';
 
-const ANALYSIS_DOC = 'https://drive.google.com/file/d/1qSiXn0aJ2M5cgBKqwrhvDSuceaB9F2kk/view?usp=drive_link';
+const ANALYSIS_DOC = 'https://drive.google.com/file/d/10Oy1g_f7HRXQSxwDOXyxw4HrRgCA6lv5/view?usp=sharing';
 const SURVEY = 'https://forms.gle/ABn8jdDPNi3EgSBw5';
 
 // Screenshots of this site taken with made-up demo data (src/assets/guide). Missing files are simply skipped.
