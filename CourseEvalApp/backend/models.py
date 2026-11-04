@@ -70,6 +70,10 @@ class User(Base):
     yearly_cap_usd: Mapped[float | None] = mapped_column(Float, nullable=True, default=lambda: config.DEFAULT_YEARLY_CAP_USD)
     encrypted_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     api_key_last4: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    # Which provider the own key belongs to and which of its models to use (NLP/model_catalog.py).
+    # Empty on keys saved before providers existed: those are OpenAI keys with the default model.
+    api_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    api_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     reports: Mapped[list["Report"]] = relationship(back_populates="owner", foreign_keys="Report.owner_id")
 

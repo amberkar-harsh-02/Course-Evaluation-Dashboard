@@ -1,4 +1,4 @@
-"""Encryption for professors' own OpenAI keys.
+"""Encryption for professors' own API keys (OpenAI, Anthropic or Google Gemini).
 
 Keys are encrypted with Fernet (AES-128-CBC + HMAC) using KEY_ENCRYPTION_SECRET from the environment.
 The database only ever holds the encrypted value and the last 4 characters. The plain key is decrypted
@@ -13,6 +13,17 @@ from cryptography.fernet import Fernet, InvalidToken
 import config
 
 OPENAI_KEY_PATTERN = re.compile(r"^sk-[A-Za-z0-9_\-]{20,200}$")
+# Key formats from each provider's docs: Anthropic keys start with sk-ant-, Google API keys with AIza
+KEY_PATTERNS = {
+    "openai": OPENAI_KEY_PATTERN,
+    "anthropic": re.compile(r"^sk-ant-[A-Za-z0-9_\-]{20,200}$"),
+    "gemini": re.compile(r"^AIza[A-Za-z0-9_\-]{30,60}$"),
+}
+KEY_HINTS = {
+    "openai": "an OpenAI API key (it should start with sk-)",
+    "anthropic": "an Anthropic API key (it should start with sk-ant-)",
+    "gemini": "a Google Gemini API key (it should start with AIza)",
+}
 
 
 class KeyVaultError(RuntimeError):
@@ -29,7 +40,15 @@ def _fernet() -> Fernet:
 
 
 def is_valid_openai_key(key: str) -> bool:
-    return bool(OPENAI_KEY_PATTERN.fullmatch(key or ""))
+    return is_valid_key("openai", key)
+
+
+def is_valid_key(provider: str, key: str) -> bool:
+    pattern = KEY_PATTERNS.get(provider)
+    if pattern is None or not pattern.fullmatch(key or ""):
+        return False
+    # An Anthropic key also matches the looser OpenAI pattern; keep each key with its own provider
+    return not (provider == "openai" and key.startswith("sk-ant-"))
 
 
 def encrypt_key(key: str) -> str:

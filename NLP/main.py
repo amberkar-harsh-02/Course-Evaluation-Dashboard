@@ -14,7 +14,8 @@ from data import SCORING_RUBRIC, TOPIC_DEFS, TOPIC_KEYS
 import settings
 import llm_cache
 import contextvars
-from llm_context import LLMAccountError, current_meter, llm_run, openai_key_override
+import model_catalog
+from llm_context import LLMAccountError, current_meter, key_override, llm_run, model_override
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
@@ -251,7 +252,7 @@ def call_llm(prompt: str, model_choice: str = "local", temperature: float = 0.1,
     """
     key = None
     if settings.LLM_CACHE:
-        key = llm_cache.cache_key(model_choice, settings.model_id_for(model_choice), prompt, schema, json_mode, temperature)
+        key = llm_cache.cache_key(model_choice, current_model_id(model_choice), prompt, schema, json_mode, temperature)
         cached = llm_cache.get(settings.LLM_CACHE_PATH, key)
         if cached is not None:
             meter = current_meter.get()
@@ -270,17 +271,126 @@ def _record_usage(model_choice: str, input_tokens: Any, cached_tokens: Any, outp
         meter.add(model_choice, input_tokens or 0, cached_tokens or 0, output_tokens or 0)
 
 
-def _raise_for_account_problem(response: requests.Response) -> None:
+PROVIDER_NAMES = {"openai": "OpenAI", "anthropic": "Anthropic", "gemini": "Google Gemini"}
+ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+ENV_KEYS = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "gemini": "GEMINI_API_KEY"}
+
+
+def current_model_id(model_choice: str) -> str:
+    """The model this run uses: the run's chosen model, else the provider's default (the lab model for OpenAI)."""
+    if model_choice == "local":
+        return settings.OLLAMA_MODEL
+    chosen = model_override.get()
+    if chosen:
+        return chosen
+    if model_choice == "openai":
+        return settings.OPENAI_MODEL
+    default = model_catalog.default_model(model_choice)
+    return default["model_id"] if default else settings.OPENAI_MODEL
+
+
+def _api_key(provider: str) -> str:
+    return (key_override.get() or os.environ.get(ENV_KEYS[provider], "")).strip()
+
+
+def _error_text(response: requests.Response) -> str:
+    try:
+        error = response.json().get("error") or {}
+    except ValueError:
+        return ""
+    if isinstance(error, dict):
+        return " ".join(str(error.get(k) or "") for k in ("code", "type", "status", "message")).lower()
+    return str(error).lower()
+
+
+def _raise_for_account_problem(response: requests.Response, provider: str = "openai") -> None:
     """Bad key or no credit: stop the whole run instead of failing every comment one by one."""
-    if response.status_code in (401, 403):
-        raise LLMAccountError("The OpenAI API key was rejected. Check the key and try again.")
-    if response.status_code == 429:
-        try:
-            code = (response.json().get("error") or {}).get("code")
-        except ValueError:
-            code = None
-        if code == "insufficient_quota":
-            raise LLMAccountError("The OpenAI account has no credit left.")
+    name = PROVIDER_NAMES.get(provider, provider)
+    text = _error_text(response)
+    rejected = response.status_code in (401, 403) or (provider == "gemini" and "api key not valid" in text)
+    if rejected:
+        raise LLMAccountError(f"The {name} API key was rejected. Check the key and try again.")
+    no_credit = (
+        (response.status_code == 429 and "insufficient_quota" in text)
+        or ("credit balance" in text)
+        or (response.status_code == 402)
+    )
+    if no_credit:
+        raise LLMAccountError(f"The {name} account has no credit left.")
+
+
+def _call_openai(prompt: str, timeout: int, schema: dict[str, Any] | None) -> str:
+    body: dict[str, Any] = {
+        "model": current_model_id("openai"),
+        "messages": [{"role": "user", "content": prompt}],
+        "reasoning_effort": "low",
+    }
+    if schema is not None:
+        body["response_format"] = {"type": "json_schema", "json_schema": {"name": "comment_analysis", "strict": True, "schema": schema}}
+    response = requests.post(
+        settings.OPENAI_URL,
+        headers={"Authorization": f"Bearer {_api_key('openai')}", "Content-Type": "application/json"},
+        json=body,
+        timeout=max(timeout, 180),
+    )
+    _raise_for_account_problem(response, "openai")
+    response.raise_for_status()
+    data = response.json()
+    usage = data.get("usage") or {}
+    _record_usage("openai", usage.get("prompt_tokens"), (usage.get("prompt_tokens_details") or {}).get("cached_tokens"), usage.get("completion_tokens"))
+    return data["choices"][0]["message"]["content"]
+
+
+def _call_anthropic(prompt: str, temperature: float, timeout: int, schema: dict[str, Any] | None) -> str:
+    """Claude Messages API. JSON answers use structured outputs (output_config.format)."""
+    body: dict[str, Any] = {
+        "model": current_model_id("anthropic"),
+        "max_tokens": 4096,
+        "temperature": temperature,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if schema is not None:
+        body["output_config"] = {"format": {"type": "json_schema", "schema": schema}}
+    response = requests.post(
+        ANTHROPIC_URL,
+        headers={"x-api-key": _api_key("anthropic"), "anthropic-version": "2023-06-01", "content-type": "application/json"},
+        json=body,
+        timeout=max(timeout, 180),
+    )
+    _raise_for_account_problem(response, "anthropic")
+    response.raise_for_status()
+    data = response.json()
+    usage = data.get("usage") or {}
+    cached = int(usage.get("cache_read_input_tokens") or 0)
+    total_input = int(usage.get("input_tokens") or 0) + cached + int(usage.get("cache_creation_input_tokens") or 0)
+    _record_usage("anthropic", total_input, cached, usage.get("output_tokens"))
+    return "".join(block.get("text", "") for block in data.get("content") or [] if block.get("type") == "text")
+
+
+def _call_gemini(prompt: str, temperature: float, timeout: int, schema: dict[str, Any] | None, json_mode: bool) -> str:
+    """Gemini generateContent API. JSON answers use responseMimeType + responseJsonSchema."""
+    config: dict[str, Any] = {"temperature": temperature}
+    if schema is not None:
+        config["responseMimeType"] = "application/json"
+        config["responseJsonSchema"] = schema
+    elif json_mode:
+        config["responseMimeType"] = "application/json"
+    response = requests.post(
+        GEMINI_URL.format(model=current_model_id("gemini")),
+        headers={"x-goog-api-key": _api_key("gemini"), "Content-Type": "application/json"},
+        json={"contents": [{"role": "user", "parts": [{"text": prompt}]}], "generationConfig": config},
+        timeout=max(timeout, 180),
+    )
+    _raise_for_account_problem(response, "gemini")
+    response.raise_for_status()
+    data = response.json()
+    usage = data.get("usageMetadata") or {}
+    output = int(usage.get("candidatesTokenCount") or 0) + int(usage.get("thoughtsTokenCount") or 0)
+    _record_usage("gemini", usage.get("promptTokenCount"), usage.get("cachedContentTokenCount"), output)
+    candidates = data.get("candidates") or [{}]
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    return "".join(part.get("text", "") for part in parts if not part.get("thought"))
 
 
 def _request_llm(prompt: str, model_choice: str, temperature: float, timeout: int, max_retries: int, schema: dict[str, Any] | None, json_mode: bool) -> str:
@@ -288,26 +398,11 @@ def _request_llm(prompt: str, model_choice: str, temperature: float, timeout: in
     for attempt in range(max_retries + 1):
         try:
             if model_choice == "openai":
-                api_key = (openai_key_override.get() or os.environ.get("OPENAI_API_KEY", "")).strip()
-                body: dict[str, Any] = {
-                    "model": settings.OPENAI_MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "reasoning_effort": "low",
-                }
-                if schema is not None:
-                    body["response_format"] = {"type": "json_schema", "json_schema": {"name": "comment_analysis", "strict": True, "schema": schema}}
-                response = requests.post(
-                    settings.OPENAI_URL,
-                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                    json=body,
-                    timeout=max(timeout, 180),
-                )
-                _raise_for_account_problem(response)
-                response.raise_for_status()
-                data = response.json()
-                usage = data.get("usage") or {}
-                _record_usage("openai", usage.get("prompt_tokens"), (usage.get("prompt_tokens_details") or {}).get("cached_tokens"), usage.get("completion_tokens"))
-                return data["choices"][0]["message"]["content"]
+                return _call_openai(prompt, timeout, schema)
+            if model_choice == "anthropic":
+                return _call_anthropic(prompt, temperature, timeout, schema)
+            if model_choice == "gemini":
+                return _call_gemini(prompt, temperature, timeout, schema, json_mode)
 
             # Local Ollama (lab Mac Studio). Sampling settings go under "options".
             body = {
@@ -1028,14 +1123,23 @@ def prepare_comment_items(raw_comments: list[Any], dedupe_exact_comments: bool =
         items.append({"text": text, "question": question, "non_teaching_question": non_teaching})
     return items, duplicates
 
-def analysis_pipeline(course_id: str, raw_comments: list[Any], output_dir: Path | None = None, write_files: bool = True, dedupe_exact_comments: bool = True, use_rag: bool = True, model_choice: str = "local", quantitative: list[dict[str, Any]] | None = None, extraction: dict[str, Any] | None = None, progress: Callable[[str, int, int], None] | None = None, api_key: str | None = None) -> dict[str, Any]:
+def analysis_pipeline(course_id: str, raw_comments: list[Any], output_dir: Path | None = None, write_files: bool = True, dedupe_exact_comments: bool = True, use_rag: bool = True, model_choice: str = "local", quantitative: list[dict[str, Any]] | None = None, extraction: dict[str, Any] | None = None, progress: Callable[[str, int, int], None] | None = None, api_key: str | None = None, model_id: str | None = None) -> dict[str, Any]:
     """Analyze comments and build the report.
 
-    `api_key` makes this run use that OpenAI key (a professor's own key) instead of OPENAI_API_KEY.
-    Token usage and estimated cost are reported in metadata["usage"].
+    `model_choice` is the provider: "openai", "anthropic", "gemini" or "local" (lab Mac Studio).
+    `model_id` picks a model from model_catalog (default: the provider's default, for OpenAI the lab model).
+    `api_key` makes this run use that key (a professor's own key) instead of the server's key.
+    Token usage and estimated cost (at the chosen model's prices) are reported in metadata["usage"].
     Raises LLMAccountError when the provider rejects the key or the account has no credit.
     """
-    with llm_run(api_key):
+    if model_id:
+        chosen = model_catalog.find(model_choice, model_id)
+    elif model_choice in ("anthropic", "gemini"):
+        chosen = model_catalog.default_model(model_choice)
+    else:
+        chosen = None  # lab OpenAI model (prices from settings) or the local model (free)
+    prices = {k: chosen[k] for k in ("input", "cached_input", "output")} if chosen else None
+    with llm_run(api_key, model_id, prices):
         return _analysis_pipeline(course_id, raw_comments, output_dir, write_files, dedupe_exact_comments, use_rag, model_choice, quantitative, extraction, progress)
 
 def _analysis_pipeline(course_id: str, raw_comments: list[Any], output_dir: Path | None, write_files: bool, dedupe_exact_comments: bool, use_rag: bool, model_choice: str, quantitative: list[dict[str, Any]] | None, extraction: dict[str, Any] | None, progress: Callable[[str, int, int], None] | None) -> dict[str, Any]:
@@ -1206,7 +1310,7 @@ def _analysis_pipeline(course_id: str, raw_comments: list[Any], output_dir: Path
             "scored_comments": len(per_comment_score_means),
             "generic_comments": len(topic_comments[OTHER]),
             "rag_enabled": use_rag,
-            "model_id": settings.model_id_for(model_choice),
+            "model_id": current_model_id(model_choice),
             "pipeline_mode": settings.PIPELINE_MODE,
             "confidence_gate": settings.CONFIDENCE_GATE,
             "prompt_version": settings.PROMPT_VERSION,

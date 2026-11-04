@@ -242,7 +242,9 @@ export default function NewAnalysis() {
 
       {credits && (
         <div className="notice-info mt-6">
-          {credits.credit_mode === 'own_key' && <>This analysis will use <strong>your own OpenAI key</strong>{credits.api_key_last4 ? ` (ending ${credits.api_key_last4})` : ''}.</>}
+          {credits.credit_mode === 'own_key' && (credits.has_own_key
+            ? <>This analysis will use <strong>your own {credits.api_provider_name} key</strong> (ending {credits.api_key_last4}) with <strong>{credits.api_model_label}</strong>.</>
+            : <>Your plan uses your own API key. Add one in your account first.</>)}
           {credits.credit_mode === 'our_key_unlimited' && <>This analysis uses the lab&apos;s AI credit.</>}
           {credits.credit_mode === 'our_key_capped' && (
             <>AI credit left this year: <strong>{formatMoney(credits.remaining_usd)}</strong> of {formatMoney(credits.yearly_cap_usd)}. A typical file uses a few cents to about a dollar.</>

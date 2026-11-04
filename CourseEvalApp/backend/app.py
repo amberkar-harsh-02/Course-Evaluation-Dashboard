@@ -20,7 +20,8 @@ from database import get_db, init_db
 import analysis
 from compare import build_comparison, summarize_report
 from credits import credit_status, lab_spend_this_year, credit_year_start, plan_run
-from keyvault import KeyVaultError, encrypt_key, is_valid_openai_key
+import model_options
+from keyvault import KEY_HINTS, KeyVaultError, encrypt_key, is_valid_key
 from models import CreditMode, Report, Role, Status, Upload, UsageLog, User
 from security import (
     as_utc,
@@ -99,6 +100,7 @@ class UserOut(BaseModel):
     yearly_cap_usd: float | None
     has_own_key: bool
     api_key_last4: str | None
+    api_provider: str | None = None
     report_count: int | None = None
 
     @classmethod
@@ -108,6 +110,7 @@ class UserOut(BaseModel):
             status=user.status, created_at=user.created_at, reviewed_at=user.reviewed_at,
             last_login_at=user.last_login_at, guide_seen_at=user.guide_seen_at, credit_mode=user.credit_mode, yearly_cap_usd=user.yearly_cap_usd,
             has_own_key=bool(user.encrypted_api_key), api_key_last4=user.api_key_last4,
+            api_provider=(user.api_provider or "openai") if user.encrypted_api_key else None,
         )
 
 
@@ -124,6 +127,13 @@ class RoleUpdate(BaseModel):
 
 class ApiKeyRequest(BaseModel):
     api_key: str = Field(max_length=300)
+    provider: str = Field(default="openai", max_length=20)
+    model: str | None = Field(default=None, max_length=100)
+
+
+class ApiModelRequest(BaseModel):
+    provider: str = Field(max_length=20)
+    model: str = Field(max_length=100)
 
 
 class CreditUpdate(BaseModel):
@@ -227,18 +237,52 @@ def my_credits(user: User = Depends(get_current_user), db: Session = Depends(get
     return credit_status(db, user)
 
 
+@app.get("/api/models")
+def available_models(user: User = Depends(get_current_user)):
+    """Providers and models a professor can use with their own key."""
+    return model_options.catalog()
+
+
+def _chosen_model(provider: str, model_id: str | None) -> dict:
+    if provider not in model_options.providers():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown AI provider")
+    model = model_options.find(provider, model_id) if model_id else model_options.default_model(provider)
+    if model is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="That model is not available for this provider")
+    return model
+
+
 @app.put("/api/me/api-key")
 def save_api_key(req: ApiKeyRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    model = _chosen_model(req.provider, req.model)
     key = req.api_key.strip()
-    if not is_valid_openai_key(key):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="That does not look like an OpenAI API key (it should start with sk-)")
+    if not is_valid_key(req.provider, key):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"That does not look like {KEY_HINTS[req.provider]}")
     try:
         user.encrypted_api_key = encrypt_key(key)
     except KeyVaultError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
     user.api_key_last4 = key[-4:]
+    user.api_provider = req.provider
+    user.api_model = model["model_id"]
     db.commit()
-    logger.info("User %s saved an own API key", user.id)
+    logger.info("User %s saved an own %s API key", user.id, req.provider)
+    return credit_status(db, user)
+
+
+@app.put("/api/me/api-model")
+def change_api_model(req: ApiModelRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Switch to another model of the same provider without entering the key again."""
+    if not user.encrypted_api_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Add an API key first")
+    current_provider, _ = model_options.resolve(user.api_provider, user.api_model)
+    if req.provider != current_provider:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Your saved key is for another provider. Enter a key for the new provider instead.")
+    model = _chosen_model(req.provider, req.model)
+    user.api_provider = req.provider
+    user.api_model = model["model_id"]
+    db.commit()
     return credit_status(db, user)
 
 
@@ -246,6 +290,8 @@ def save_api_key(req: ApiKeyRequest, user: User = Depends(get_current_user), db:
 def delete_api_key(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     user.encrypted_api_key = None
     user.api_key_last4 = None
+    user.api_provider = None
+    user.api_model = None
     db.commit()
     return credit_status(db, user)
 

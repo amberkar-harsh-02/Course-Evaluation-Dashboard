@@ -69,5 +69,5 @@ def model_id_for(model_choice: str) -> str:
 
 
 def max_parallel_calls(model_choice: str) -> int:
-    limit = MAX_PARALLEL_API_CALLS if model_choice == "openai" else MAX_PARALLEL_LOCAL_CALLS
+    limit = MAX_PARALLEL_LOCAL_CALLS if model_choice == "local" else MAX_PARALLEL_API_CALLS
     return max(1, limit)

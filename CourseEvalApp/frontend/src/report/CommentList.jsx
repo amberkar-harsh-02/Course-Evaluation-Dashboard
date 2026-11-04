@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { scoreTone, shortName } from './model';
 import SearchField from '../components/SearchField';
+import Pagination from '../components/Pagination';
 
 const BADGE = {
   low: 'bg-score-lowTint text-score-low',
@@ -9,6 +10,7 @@ const BADGE = {
   high: 'bg-score-highTint text-score-high',
   none: 'bg-line-soft text-ink-muted',
 };
+const PAGE_SIZES = [10, 20, 50];
 const SORTS = {
   original: { label: 'Original order', fn: () => 0 },
   low: { label: 'Lowest score first', fn: (a, b) => (a.score ?? 6) - (b.score ?? 6) },
@@ -26,12 +28,16 @@ const FILTERS = {
  * Student comments with search, filters and sort.
  * Each comment: { text, question, score, topics?: string[], scores?: {topic: score}, ignored }.
  * Pass `topicOptions` to add a topic filter; `selecting` adds checkboxes for ignore mode.
+ * Long lists are split into pages (20 per page by default); ticks in ignore mode are kept across pages.
  */
 export default function CommentList({ comments, topicOptions = null, selecting = false, selected, onToggle, emptyText, idPrefix = 'comments' }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const [topic, setTopic] = useState('all');
   const [sort, setSort] = useState('original');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const listTop = useRef(null);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -43,6 +49,21 @@ export default function CommentList({ comments, topicOptions = null, selecting =
         && (!q || c.text.toLowerCase().includes(q)))
       .sort((a, b) => SORTS[sort].fn(a, b) || a.index - b.index);
   }, [comments, query, filter, topic, sort]);
+
+  // A new search, filter, order or page size starts again on page 1
+  useEffect(() => { setPage(1); }, [query, filter, topic, sort, pageSize, comments]);
+  const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
+  const current = Math.min(page, pageCount);
+  const first = (current - 1) * pageSize;
+  const shown = visible.slice(first, first + pageSize);
+  const goToPage = (next) => {
+    setPage(next);
+    listTop.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+  const filtered = visible.length !== comments.length;
+  const countText = pageCount > 1
+    ? `Showing ${first + 1}–${first + shown.length} of ${visible.length}${filtered ? ` matching comments (${comments.length} in total)` : ' comments'}`
+    : filtered ? `${visible.length} of ${comments.length} comments` : `${comments.length} comments`;
 
   // When every comment answers the same survey question, say it once instead of on each comment
   const questions = [...new Set(comments.map((c) => c.question).filter(Boolean))];
@@ -78,10 +99,8 @@ export default function CommentList({ comments, topicOptions = null, selecting =
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-baseline justify-between gap-2 text-sm">
-        <p className="text-ink-muted" aria-live="polite">
-          {visible.length === comments.length ? `${comments.length} comments` : `${visible.length} of ${comments.length} comments`}
-        </p>
+      <div ref={listTop} className="mt-4 flex scroll-mt-4 flex-wrap items-baseline justify-between gap-2 text-sm">
+        <p className="num text-ink-muted" aria-live="polite">{countText}</p>
         {sharedQuestion && <p className="max-w-[72ch] text-ink-muted">Answers to: {sharedQuestion}</p>}
       </div>
 
@@ -91,7 +110,7 @@ export default function CommentList({ comments, topicOptions = null, selecting =
         </p>
       ) : (
         <ul className="mt-3 divide-y divide-line-soft rounded border border-line bg-paper">
-          {visible.map((c) => {
+          {shown.map((c) => {
             const checked = selecting && selected?.has(c.text);
             const tone = scoreTone(c.score);
             return (
@@ -127,6 +146,19 @@ export default function CommentList({ comments, topicOptions = null, selecting =
             );
           })}
         </ul>
+      )}
+
+      {visible.length > PAGE_SIZES[0] && (
+        <Pagination
+          page={current}
+          pageCount={pageCount}
+          onPage={goToPage}
+          pageSize={pageSize}
+          pageSizes={PAGE_SIZES}
+          onPageSize={setPageSize}
+          label="Comment pages"
+          idPrefix={idPrefix}
+        />
       )}
     </div>
   );

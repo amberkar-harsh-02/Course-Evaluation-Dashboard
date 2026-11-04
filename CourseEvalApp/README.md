@@ -30,6 +30,12 @@ Open http://localhost:5173/course-eval-app/ and sign in with your admin account.
 
 - **AI calls:** the backend imports the pipeline from `../NLP`. It uses the lab OpenAI key in `NLP/.env`, or a
   professor's own key.
+- **Own keys:**
+  - Professors on the "own key" plan choose an AI provider (OpenAI, Anthropic or Google Gemini) and one of
+    its models on the Account page, then paste a key from that provider.
+  - The model list comes from `NLP/model_catalog.py` (`GET /api/models`), and `PUT /api/me/api-model` switches
+    models without re-entering the key.
+  - Lab-credit plans always use the lab's GPT model.
 - **Cost:** running an analysis with OpenAI costs real credit.
 
 ## What each user can do
@@ -40,7 +46,7 @@ Open http://localhost:5173/course-eval-app/ and sign in with your admin account.
 | Upload a file and watch the analysis progress | yes | yes |
 | My reports: open, review (charts, topics, ignore comments), export, delete | own reports only | own reports only |
 | Compare reports across terms (score changes per topic, trend chart, Pace direction, survey ratings) | own reports only | own reports only |
-| Account: credit left, own OpenAI key, change password | yes | yes |
+| Account: credit left, own API key (provider and model), change password | yes | yes |
 | Use the local Mac Studio model | no | yes |
 | Users: approve or reject, disable or enable, set credit plan and yearly $ limit | no | yes |
 | Usage and credits: lab spend, budget and per-professor costs | no | yes |
@@ -64,6 +70,8 @@ Reports are private to their owner. The admin sees how many reports each profess
   - "View more details" opens the full topic page (`?topic=Pace`), where "Ignore comments" removes comments from
     the score and recalculates it.
   - Topics with fewer than 5 scored comments are faded and labelled "few".
+  - Comment lists are split into pages, 20 per page by default (10, 20 or 50), with First, Previous, page
+    numbers, Next and Last. Ticks in ignore mode are kept across pages.
   - Light and dark mode: the toggle sits in the sidebar footer and is remembered per browser.
 - **Sidebar:** when a report is open, its course appears under My reports with the topics nested below it and each
   topic's score. Selecting one opens that topic's page (`?topic=`).

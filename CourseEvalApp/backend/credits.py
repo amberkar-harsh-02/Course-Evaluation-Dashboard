@@ -3,7 +3,8 @@
 Credit modes (set per professor by the admin):
 - our_key_capped:    lab OpenAI key, up to yearly_cap_usd per credit year
 - our_key_unlimited: lab OpenAI key, no personal limit
-- own_key:           the professor's own OpenAI key; their usage never counts against lab credit
+- own_key:           the professor's own key for OpenAI, Anthropic or Google Gemini, with a model they choose;
+                     their usage never counts against lab credit
 The local Mac Studio model is free but admin-only.
 
 Phase 3's analysis endpoint calls `plan_run()` before a run and `record_usage()` after it.
@@ -18,6 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 import config
+import model_options
 from keyvault import KeyVaultError, decrypt_key
 from models import CreditMode, Role, UsageLog, User
 
@@ -58,15 +60,26 @@ def credit_status(db: Session, user: User) -> dict:
         "credit_year_start": credit_year_start().date().isoformat(),
         "has_own_key": bool(user.encrypted_api_key),
         "api_key_last4": user.api_key_last4,
+        **own_key_choice(user),
         "allowed_models": allowed_models(user),
     }
 
 
+def own_key_choice(user: User) -> dict:
+    """The provider and model of the user's own key, for the account page (None when no key is saved)."""
+    if not user.encrypted_api_key:
+        return {"api_provider": None, "api_provider_name": None, "api_model": None, "api_model_label": None}
+    provider, model = model_options.resolve(user.api_provider, user.api_model)
+    return {"api_provider": provider, "api_provider_name": model_options.providers().get(provider, provider),
+            "api_model": model["model_id"], "api_model_label": model["label"].split(" (")[0]}  # drop "(recommended)"
+
+
 @dataclass
 class RunPlan:
-    model_choice: str
+    model_choice: str        # provider: openai, anthropic, gemini or local
     api_key: str | None      # professor's own key, or None to use the lab key / local model
     uses_own_key: bool
+    model_id: str | None = None  # None: the provider's default (the lab model for OpenAI)
 
 
 def _refuse(code: int, detail: str) -> HTTPException:
@@ -84,9 +97,10 @@ def plan_run(db: Session, user: User, model_choice: str) -> RunPlan:
 
     if user.credit_mode == CreditMode.OWN_KEY:
         if not user.encrypted_api_key:
-            raise _refuse(status.HTTP_400_BAD_REQUEST, "Add your OpenAI API key in your account settings first")
+            raise _refuse(status.HTTP_400_BAD_REQUEST, "Add your AI provider and API key in your account settings first")
+        provider, model = model_options.resolve(user.api_provider, user.api_model)
         try:
-            return RunPlan(MODEL_OPENAI, decrypt_key(user.encrypted_api_key), True)
+            return RunPlan(provider, decrypt_key(user.encrypted_api_key), True, model["model_id"])
         except KeyVaultError as exc:
             raise _refuse(status.HTTP_400_BAD_REQUEST, str(exc))
 

@@ -14,8 +14,10 @@ const TABS = [
 const MODES = [
   { value: 'our_key_capped', label: 'Lab credit, yearly limit' },
   { value: 'our_key_unlimited', label: 'Lab credit, no limit' },
-  { value: 'own_key', label: 'Own OpenAI key' },
+  { value: 'own_key', label: 'Own API key' },
 ];
+
+const PROVIDER_NAMES = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Gemini' };
 
 function CreditEditor({ user, onSaved }) {
   const [mode, setMode] = useState(user.credit_mode);
@@ -47,6 +49,9 @@ function CreditEditor({ user, onSaved }) {
         </div>
       )}
       {dirty && <button className="btn-secondary py-1" onClick={save}>Save</button>}
+      {mode === 'own_key' && !dirty && (
+        <span className="text-xs text-ink-muted">{user.has_own_key ? `${PROVIDER_NAMES[user.api_provider] || 'Key'} key saved` : 'No key yet'}</span>
+      )}
     </div>
   );
 }
@@ -54,6 +59,7 @@ function CreditEditor({ user, onSaved }) {
 CreditEditor.propTypes = {
   user: PropTypes.shape({
     id: PropTypes.number, name: PropTypes.string, credit_mode: PropTypes.string, yearly_cap_usd: PropTypes.number,
+    has_own_key: PropTypes.bool, api_provider: PropTypes.string,
   }).isRequired,
   onSaved: PropTypes.func.isRequired,
 };

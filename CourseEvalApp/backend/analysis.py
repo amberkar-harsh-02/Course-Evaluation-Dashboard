@@ -73,6 +73,7 @@ def run_pipeline(course_id: str, data: dict[str, Any], plan: credits.RunPlan, pr
             extraction={"parser": data.get("parser", ""), "warnings": data.get("warnings", [])},
             progress=progress,
             api_key=plan.api_key,
+            model_id=plan.model_id,
         )
     except Exception as exc:
         if type(exc).__name__ == "LLMAccountError":

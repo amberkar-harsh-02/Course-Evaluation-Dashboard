@@ -55,12 +55,22 @@ set `NLP_API_KEY` so those requests must carry an `X-API-Key` header.
 
 - `local` (default): Ollama `/api/generate` at `OLLAMA_URL` with model `OLLAMA_MODEL` (currently `qwen35b:latest` on the lab Mac Studio).
 - `openai`: Chat Completions with structured outputs. Needs `OPENAI_API_KEY` in `.env`.
+- `anthropic`: Claude Messages API with structured outputs (`output_config.format`).
+- `gemini`: Gemini `generateContent` with `responseMimeType: application/json` and `responseJsonSchema`.
 
-Every report records its token use and estimated cost in `metadata.usage`, using the prices in `settings.py`
-(`OPENAI_PRICE_*`). `analysis_pipeline(..., api_key=...)` runs with a professor's own OpenAI key instead of the
-shared one; if OpenAI rejects the key or the account has no credit, the run stops with `LLMAccountError`.
+The Anthropic and Gemini providers are used with professors' own keys from the merged app. For testing, the
+server can also use `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` from `.env`.
 
-Model IDs live in `settings.py` and are written into every report (`metadata.model_id`).
+`model_catalog.py` lists the models that can be chosen for each provider, with their prices per 1M tokens.
+The lab's OpenAI model (`OPENAI_MODEL` and the `OPENAI_PRICE_*` settings) is always the OpenAI default.
+
+`analysis_pipeline(..., model_choice="anthropic", model_id="claude-sonnet-5-5", api_key=...)`:
+- runs on that provider and model with that key;
+- estimates the cost with that model's prices;
+- stops with `LLMAccountError` (naming the provider) if the key is rejected or the account has no credit.
+
+Every report records its token use and estimated cost in `metadata.usage`, and the model it used in
+`metadata.model_id`.
 
 ## Pipeline steps
 
