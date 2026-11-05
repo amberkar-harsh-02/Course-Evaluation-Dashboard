@@ -31,6 +31,7 @@ def fake_pipeline(**kwargs):
 @pytest.fixture
 def analysis_env(db_session, tmp_path, monkeypatch):
     PIPELINE_CALLS.clear()
+    monkeypatch.setattr(analysis, "_jobs", {})
     ocr = {"payload": {"parser": "pdf", "warnings": [], "quantitative": [],
                        "responses": [{"text": "Lectures were clear.", "question": None, "non_teaching_question": False}]}}
     monkeypatch.setattr(analysis, "session_factory", db_session)
@@ -127,6 +128,78 @@ def test_capped_professor_is_refused_before_anything_is_stored(client, db_sessio
         assert db.query(Upload).count() == 0
 
 
+class HeldRunner:
+    """Stands in for the worker so jobs stay queued until a test runs them."""
+
+    def __init__(self):
+        self.calls = []
+
+    def submit(self, fn, *args):
+        self.calls.append((fn, args))
+
+
+def test_capped_professor_can_queue_only_one_lab_credit_job(client, db_session, make_user, analysis_env, monkeypatch):
+    make_user("prof@csumb.edu")
+    make_user("other@csumb.edu")
+    runner = HeldRunner()
+    monkeypatch.setattr(analysis, "_runner", runner)
+    headers = auth_header(client, "prof@csumb.edu")
+    assert upload(client, headers).status_code == 202
+    second = upload(client, headers)
+    assert second.status_code == 429 and "already have an analysis" in second.json()["detail"]
+    with db_session() as db:
+        assert db.query(Upload).count() == 1  # the refused upload is not stored
+    assert upload(client, auth_header(client, "other@csumb.edu")).status_code == 202  # the limit is per professor
+    fn, args = runner.calls[0]
+    fn(*args)  # first job finishes, so the professor may upload again
+    assert upload(client, headers).status_code == 202
+
+
+def test_queued_job_is_refused_when_the_cap_is_reached_before_it_starts(client, db_session, make_user, analysis_env, monkeypatch):
+    user_id = make_user("prof@csumb.edu")
+    runner = HeldRunner()
+    monkeypatch.setattr(analysis, "_runner", runner)
+    headers = auth_header(client, "prof@csumb.edu")
+    job_id = upload(client, headers).json()["job_id"]
+    with db_session() as db:
+        db.add(UsageLog(user_id=user_id, cost_usd=25.0))  # spend recorded while the job waited
+        db.commit()
+    fn, args = runner.calls[0]
+    fn(*args)
+    job = client.get(f"/api/analyses/{job_id}", headers=headers).json()
+    assert job["status"] == "failed" and "AI credit" in job["error"]
+    assert not PIPELINE_CALLS
+
+
+def test_own_key_professors_can_queue_several_jobs(client, db_session, make_user, analysis_env, monkeypatch):
+    user_id = make_user("prof@csumb.edu")
+    monkeypatch.setattr(analysis, "_runner", HeldRunner())
+    headers = auth_header(client, "prof@csumb.edu")
+    client.put("/api/me/api-key", json={"api_key": "sk-proj-abcdefghijklmnopqrstuvwxyz1234WXYZ"}, headers=headers)
+    with db_session() as db:
+        db.get(User, user_id).credit_mode = CreditMode.OWN_KEY
+        db.commit()
+    assert upload(client, headers).status_code == 202
+    assert upload(client, headers).status_code == 202
+
+
+def test_failed_upload_storage_releases_the_reserved_slot(client, make_user, analysis_env, monkeypatch):
+    make_user("prof@csumb.edu")
+    monkeypatch.setattr(analysis, "_runner", HeldRunner())
+    real_store = analysis.store_upload
+
+    def broken_store(*a, **k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(analysis, "store_upload", broken_store)
+    headers = auth_header(client, "prof@csumb.edu")
+    with pytest.raises(OSError):
+        upload(client, headers)
+    assert analysis._jobs == {}
+    monkeypatch.setattr(analysis, "store_upload", real_store)
+    assert upload(client, headers).status_code == 202
+
+
 def test_professors_cannot_pick_the_local_model(client, make_user, analysis_env):
     make_user("prof@csumb.edu")
     response = client.post("/api/analyses", files={"file": ("a.pdf", b"x")}, data={"model_choice": "local"},
@@ -207,3 +280,117 @@ def test_admin_sees_report_counts_but_not_contents(client, make_user, analysis_e
     wait_for(client, prof, upload(client, prof).json()["job_id"])
     users = client.get("/api/admin/users", headers=auth_header(client, "admin@csumb.edu")).json()
     assert {u["email"]: u["report_count"] for u in users} == {"prof@csumb.edu": 1, "admin@csumb.edu": 0}
+
+
+def test_each_professor_may_have_two_active_jobs(client, db_session, make_user, analysis_env, monkeypatch):
+    user_id = make_user("prof@csumb.edu")
+    monkeypatch.setattr(analysis, "_runner", HeldRunner())
+    headers = auth_header(client, "prof@csumb.edu")
+    client.put("/api/me/api-key", json={"api_key": "sk-proj-abcdefghijklmnopqrstuvwxyz1234WXYZ"}, headers=headers)
+    with db_session() as db:
+        db.get(User, user_id).credit_mode = CreditMode.OWN_KEY
+        db.commit()
+    assert upload(client, headers).status_code == 202
+    assert upload(client, headers).status_code == 202
+    third = upload(client, headers)
+    assert third.status_code == 429 and "2 analyses" in third.json()["detail"]
+
+
+def test_the_whole_queue_has_a_limit(client, make_user, analysis_env, monkeypatch):
+    monkeypatch.setattr(analysis, "_runner", HeldRunner())
+    monkeypatch.setattr(analysis, "MAX_ACTIVE_JOBS_TOTAL", 1)
+    make_user("a@csumb.edu")
+    make_user("b@csumb.edu")
+    assert upload(client, auth_header(client, "a@csumb.edu")).status_code == 202
+    refused = upload(client, auth_header(client, "b@csumb.edu"))
+    assert refused.status_code == 429 and "queue is full" in refused.json()["detail"]
+
+
+def test_files_with_too_many_comments_are_refused_before_the_ai_runs(client, make_user, analysis_env, monkeypatch):
+    make_user("prof@csumb.edu")
+    monkeypatch.setattr(analysis, "MAX_COMMENTS_PER_ANALYSIS", 2)
+    analysis_env["payload"]["responses"] = [{"text": f"Comment {i}", "question": None, "non_teaching_question": False} for i in range(3)]
+    headers = auth_header(client, "prof@csumb.edu")
+    job = wait_for(client, headers, upload(client, headers).json()["job_id"])
+    assert job["status"] == "failed" and "split it" in job["error"]
+    assert not PIPELINE_CALLS
+
+
+def test_old_finished_jobs_are_forgotten(client, make_user, analysis_env):
+    from datetime import datetime, timedelta, timezone
+    make_user("prof@csumb.edu")
+    old = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat(timespec="seconds")
+    analysis._jobs["old"] = {"job_id": "old", "owner_id": 999, "status": "complete", "created": old, "lab_credit": False}
+    analysis._jobs["stuck"] = {"job_id": "stuck", "owner_id": 999, "status": "running", "created": old, "lab_credit": False}
+    headers = auth_header(client, "prof@csumb.edu")
+    wait_for(client, headers, upload(client, headers).json()["job_id"])
+    assert "old" not in analysis._jobs and "stuck" in analysis._jobs  # running jobs are never dropped
+
+
+def test_uploads_without_a_valid_token_are_refused_before_the_body_is_read(client, make_user, analysis_env, monkeypatch):
+    read = []
+    real_store = analysis.store_upload
+    monkeypatch.setattr(analysis, "store_upload", lambda *a, **k: read.append(1) or real_store(*a, **k))
+    no_token = client.post("/api/analyses", files={"file": ("a.pdf", b"%PDF fake")}, data={"model_choice": "openai"})
+    assert no_token.status_code == 401
+    forged = client.post("/api/analyses", files={"file": ("a.pdf", b"%PDF fake")}, data={"model_choice": "openai"},
+                         headers={"Authorization": "Bearer not.a.token"})
+    assert forged.status_code == 401
+    assert not read and not PIPELINE_CALLS
+
+
+def test_oversized_bodies_are_refused_without_reading_them(client, make_user, analysis_env, monkeypatch):
+    import limits
+    make_user("prof@csumb.edu")
+    headers = auth_header(client, "prof@csumb.edu")
+    monkeypatch.setattr(config, "MAX_UPLOAD_MB", 1)
+    big = b"%PDF" + b"x" * (3 * 1024 * 1024)
+    declared = client.post("/api/analyses", files={"file": ("a.pdf", big)}, data={"model_choice": "openai"}, headers=headers)
+    assert declared.status_code == 413 and "1 MB" in declared.json()["detail"]
+
+    def chunks():  # no Content-Length: the limit is enforced while reading
+        for _ in range(40):
+            yield b"x" * (128 * 1024)
+
+    streamed = client.post("/api/analyses", content=chunks(),
+                           headers={**headers, "Content-Type": "multipart/form-data; boundary=zzz"})
+    assert streamed.status_code == 413
+
+    monkeypatch.setattr(limits, "MAX_JSON_BODY_BYTES", 1000)
+    too_big_json = client.put("/api/reports/1", json={"report": {"notes": "x" * 2000}}, headers=headers)
+    assert too_big_json.status_code == 413
+    assert not PIPELINE_CALLS
+
+
+def test_failed_jobs_remove_their_uploaded_file(client, db_session, make_user, analysis_env):
+    make_user("prof@csumb.edu")
+    analysis_env["payload"] = {"parser": "pdf", "warnings": ["scan"], "quantitative": [], "responses": []}
+    headers = auth_header(client, "prof@csumb.edu")
+    job = wait_for(client, headers, upload(client, headers).json()["job_id"])
+    assert job["status"] == "failed"
+    with db_session() as db:
+        assert db.query(Upload).count() == 0
+    assert not any(p.is_file() for p in (config.STORAGE_DIR / "uploads").rglob("*"))
+
+
+def test_each_professor_has_a_storage_quota(client, db_session, make_user, analysis_env, monkeypatch):
+    user_id = make_user("prof@csumb.edu")
+    monkeypatch.setattr(config, "USER_STORAGE_QUOTA_MB", 1)
+    with db_session() as db:
+        db.add(Upload(owner_id=user_id, original_filename="old.pdf", stored_path="x", size_bytes=1024 * 1024))
+        db.commit()
+    response = upload(client, auth_header(client, "prof@csumb.edu"))
+    assert response.status_code == 413 and "limit" in response.json()["detail"]
+    assert analysis._jobs == {}  # the reserved slot was released
+    with db_session() as db:
+        assert db.query(Upload).count() == 1
+
+
+def test_very_long_file_names_are_shortened(client, db_session, make_user, analysis_env):
+    make_user("prof@csumb.edu")
+    headers = auth_header(client, "prof@csumb.edu")
+    job = wait_for(client, headers, upload(client, headers, name="A" * 400 + ".pdf").json()["job_id"])
+    assert job["status"] == "complete"
+    with db_session() as db:
+        name = db.query(Upload).one().original_filename
+    assert len(name) == config.MAX_FILENAME_CHARS and name.endswith(".pdf")

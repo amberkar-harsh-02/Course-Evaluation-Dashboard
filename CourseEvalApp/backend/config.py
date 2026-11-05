@@ -49,6 +49,9 @@ OCR_URL = _env("OCR_URL", "http://127.0.0.1:8000/api/extract-text")
 # Uploaded evaluation files are kept here (one folder per user)
 STORAGE_DIR = Path(_env("STORAGE_DIR", str(BASE_DIR / "storage")))
 MAX_UPLOAD_MB = int(_env("MAX_UPLOAD_MB", "25"))
+# Total size of the files one person keeps on the server (files behind deleted reports are removed)
+USER_STORAGE_QUOTA_MB = int(_env("USER_STORAGE_QUOTA_MB", "500"))
+MAX_FILENAME_CHARS = 200
 ALLOWED_UPLOAD_TYPES = (".pdf", ".docx", ".xlsx", ".xls", ".csv")
 
 ALLOWED_ORIGINS =[o.strip() for o in _env("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if o.strip()]

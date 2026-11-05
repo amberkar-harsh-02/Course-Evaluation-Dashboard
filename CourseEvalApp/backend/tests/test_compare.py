@@ -108,3 +108,43 @@ def test_edited_scores_are_used(client, db_session, make_user):
     result = client.get(f"/api/compare?ids={a},{b}", headers=headers).json()
     assert result["overall_change"] == 0.8
     assert result["topics"][0]["change"] == 1.0
+
+
+def test_compare_handles_many_topics_quickly_and_skips_malformed_entries(client, db_session, make_user):
+    """Topic and rating de-duplication is linear, and odd stored entries are skipped instead of crashing."""
+    import time
+    owner = make_user("prof@csumb.edu")
+    many = {f"Topic {i}": (3.0, 6) for i in range(20_000)}
+    data = report_json(3.0, many)
+    data["categories"] += [{"topic": ["not", "text"]}, "not a category"]
+    data["quantitative"] = [{"question": {"x": 1}, "mean": 3.0}, "not a table"]
+    a = add_report(db_session, owner, "CHEM 110", "Fall 2024", data)
+    b = add_report(db_session, owner, "CHEM 110", "Fall 2025", report_json(3.5, {f"Topic {i}": (3.5, 6) for i in range(20_000)}))
+    started = time.perf_counter()
+    response = client.get(f"/api/compare?ids={a},{b}", headers=auth_header(client, "prof@csumb.edu"))
+    assert response.status_code == 200
+    assert len(response.json()["topics"]) == 20_000
+    assert time.perf_counter() - started < 10
+
+
+def test_saved_reports_are_size_checked(client, db_session, make_user):
+    owner = make_user("prof@csumb.edu")
+    report_id = add_report(db_session, owner, "CHEM 110", "Fall 2025", report_json(3.0, {"Pace": (3.0, 6)}))
+    headers = auth_header(client, "prof@csumb.edu")
+    put = lambda data: client.put(f"/api/reports/{report_id}", json={"report": data}, headers=headers)
+
+    too_many_topics = report_json(3.0, {f"T{i}": (3.0, 6) for i in range(250)})
+    assert put(too_many_topics).status_code == 400
+    too_many_comments = report_json(3.0, {"Pace": (3.0, 6)})
+    too_many_comments["categories"][0]["comments"] = [{"feedback": "x", "score": 3}] * 20_001
+    assert put(too_many_comments).status_code == 400
+    too_big = report_json(3.0, {"Pace": (3.0, 6)})
+    too_big["notes"] = "x" * 5_000_001
+    assert put(too_big).status_code == 400
+    bad_topic = report_json(3.0, {"Pace": (3.0, 6)})
+    bad_topic["categories"][0]["topic"] = {"nested": True}
+    assert put(bad_topic).status_code == 400
+    not_a_number = client.put(f"/api/reports/{report_id}", content='{"report": {"overall_score": NaN, "categories": []}}',
+                              headers={**headers, "Content-Type": "application/json"})
+    assert not_a_number.status_code in (400, 422)
+    assert put(report_json(3.2, {"Pace": (3.2, 6)})).status_code == 200

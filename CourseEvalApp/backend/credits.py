@@ -104,15 +104,28 @@ def plan_run(db: Session, user: User, model_choice: str) -> RunPlan:
         except KeyVaultError as exc:
             raise _refuse(status.HTTP_400_BAD_REQUEST, str(exc))
 
+    check_lab_credit(db, user)
+    return RunPlan(MODEL_OPENAI, None, False)
+
+
+def uses_lab_credit(plan: RunPlan) -> bool:
+    """True when the run spends the lab's OpenAI credit (not the professor's own key, not the free local model)."""
+    return not plan.uses_own_key and plan.model_choice != MODEL_LOCAL
+
+
+def check_lab_credit(db: Session, user: User) -> None:
+    """Refuse (402) when the lab budget or the user's yearly cap is used up.
+
+    Called when an upload is accepted and again just before a queued job starts spending, because spend is only
+    recorded after a job finishes.
+    """
     if config.TOTAL_CREDIT_BUDGET_USD > 0 and lab_spend_this_year(db) >= config.TOTAL_CREDIT_BUDGET_USD:
         raise _refuse(status.HTTP_402_PAYMENT_REQUIRED, "The shared AI credit for this year is used up. Please contact the administrator.")
-
     if user.credit_mode == CreditMode.OUR_KEY_CAPPED:
         cap = user.yearly_cap_usd if user.yearly_cap_usd is not None else config.DEFAULT_YEARLY_CAP_USD
         if lab_spend_this_year(db, user) >= cap:
             raise _refuse(status.HTTP_402_PAYMENT_REQUIRED,
                           f"You have used your ${cap:.2f} AI credit for this year. Please contact the administrator.")
-    return RunPlan(MODEL_OPENAI, None, False)
 
 
 def record_usage(db: Session, user: User, usage: dict, plan: RunPlan, report_id: int | None = None) -> UsageLog:

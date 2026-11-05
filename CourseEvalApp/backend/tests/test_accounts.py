@@ -149,3 +149,39 @@ def test_guide_shows_until_marked_seen(client, make_user):
     assert again[:19] == first[:19]
     assert client.get("/api/auth/me", headers=headers).json()["guide_seen_at"][:19] == first[:19]
     assert client.post("/api/auth/guide-seen").status_code == 401
+
+
+def test_attempts_are_counted_before_the_password_check(client, db_session, make_user, monkeypatch):
+    """Simultaneous guesses each take a numbered slot first, so only MAX_FAILED_LOGINS passwords are ever checked."""
+    import app as app_module
+    import config
+    from models import User
+    user_id = make_user("prof@csumb.edu")
+    with db_session() as db:
+        db.get(User, user_id).failed_logins = config.MAX_FAILED_LOGINS  # five guesses already in flight
+        db.commit()
+    checked = []
+    real_verify = app_module.verify_password
+    monkeypatch.setattr(app_module, "verify_password", lambda *a: checked.append(1) or real_verify(*a))
+    assert login(client, "prof@csumb.edu").status_code == 429  # even the right password is not checked
+    assert not checked
+    with db_session() as db:
+        assert db.get(User, user_id).locked_until is not None
+
+
+def test_lockout_expires_and_counting_starts_again(client, db_session, make_user):
+    from datetime import datetime, timedelta, timezone
+    import config
+    from models import User
+    user_id = make_user("prof@csumb.edu")
+    for _ in range(config.MAX_FAILED_LOGINS):
+        login(client, "prof@csumb.edu", "wrong-password-1")
+    assert login(client, "prof@csumb.edu").status_code == 429
+    with db_session() as db:
+        db.get(User, user_id).locked_until = datetime.now(timezone.utc) - timedelta(minutes=1)
+        db.commit()
+    assert login(client, "prof@csumb.edu", "wrong-password-1").status_code == 401  # counting restarted at 1
+    assert login(client, "prof@csumb.edu").status_code == 200
+    with db_session() as db:
+        user = db.get(User, user_id)
+        assert user.failed_logins == 0 and user.locked_until is None

@@ -54,8 +54,10 @@ def summarize_report(report_id: int, course: str, term: str | None, created_at: 
     topics: dict[str, dict] = {}
     pace_directions = None
     for category in data.get("categories") or []:
+        if not isinstance(category, dict):
+            continue
         topic = category.get("topic")
-        if not topic or topic in OTHER_TOPICS:
+        if not isinstance(topic, str) or not topic or topic in OTHER_TOPICS:
             continue
         scored = int(category.get("scored_comment_count") or 0)
         topics[topic] = {
@@ -69,8 +71,10 @@ def summarize_report(report_id: int, course: str, term: str | None, created_at: 
     metadata = data.get("metadata") or {}
     ratings = {}
     for table in data.get("quantitative") or []:
+        if not isinstance(table, dict):
+            continue
         mean = _number(table.get("mean"))
-        if table.get("question") and mean is not None:
+        if isinstance(table.get("question"), str) and table["question"] and mean is not None:
             ratings[_normalize_question(table["question"])] = {"question": table["question"], "mean": mean, "n": table.get("n")}
 
     return {
@@ -96,11 +100,8 @@ def _change(first: float | None, last: float | None) -> float | None:
 def build_comparison(summaries: list[dict]) -> dict:
     ordered = sorted(summaries, key=lambda s: term_sort_key(s["term"], s["created_at"]))
 
-    topic_names = []
-    for summary in ordered:
-        for topic in summary["topics"]:
-            if topic not in topic_names:
-                topic_names.append(topic)
+    # First-seen order without duplicates (a dict keeps insertion order; a list scan would be quadratic)
+    topic_names = list(dict.fromkeys(topic for summary in ordered for topic in summary["topics"]))
 
     rows = []
     for topic in topic_names:
@@ -119,11 +120,7 @@ def build_comparison(summaries: list[dict]) -> dict:
     declined = [{"topic": r["topic"], "change": r["change"]} for r in highlights if r["change"] < 0][:3]
 
     # Rating-table questions that appear in at least two of the reports
-    rating_keys = []
-    for summary in ordered:
-        for key in summary["ratings"]:
-            if key not in rating_keys:
-                rating_keys.append(key)
+    rating_keys = list(dict.fromkeys(key for summary in ordered for key in summary["ratings"]))
     rating_rows = []
     for key in rating_keys:
         cells = [summary["ratings"].get(key) for summary in ordered]

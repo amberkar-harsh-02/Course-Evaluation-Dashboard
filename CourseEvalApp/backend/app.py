@@ -4,6 +4,7 @@ Run:  python app.py   (or: uvicorn app:app --port 8010)
 """
 from __future__ import annotations
 
+import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -12,7 +13,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session
 
 import config
@@ -20,6 +21,7 @@ from database import get_db, init_db
 import analysis
 from compare import build_comparison, summarize_report
 from credits import credit_status, lab_spend_this_year, credit_year_start, plan_run
+from limits import BodyLimitMiddleware
 import model_options
 from keyvault import KEY_HINTS, KeyVaultError, encrypt_key, is_valid_key
 from models import CreditMode, Report, Role, Status, Upload, UsageLog, User
@@ -46,6 +48,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Course Eval App", lifespan=lifespan)
+app.add_middleware(BodyLimitMiddleware)  # added first so CORS wraps its refusals
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.ALLOWED_ORIGINS,
@@ -173,6 +176,12 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     return {"message": "Registration received. You can sign in after an administrator approves your account."}
 
 
+def _lock_account(db: Session, user_id: int, now: datetime) -> None:
+    db.execute(update(User).where(User.id == user_id)
+               .values(locked_until=now + timedelta(minutes=config.LOCKOUT_MINUTES)))
+    db.commit()
+
+
 @app.post("/api/auth/login")
 def login(req: LoginRequest, db: Session = Depends(get_db)):
     email = normalize_email(req.email)
@@ -184,17 +193,35 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                             detail="Too many failed attempts. Try again in a few minutes.")
 
-    if user is None or not verify_password(req.password, user.password_hash if user else None):
-        if user is not None:
-            user.failed_logins += 1
-            if user.failed_logins >= config.MAX_FAILED_LOGINS:
-                user.locked_until = now + timedelta(minutes=config.LOCKOUT_MINUTES)
-                user.failed_logins = 0
-            db.commit()
+    if locked_until and user is not None:
+        # The lockout has passed: start counting again. Matching the exact expired value makes this happen once
+        # even when several requests arrive together (only the first still sees that value).
+        db.execute(update(User).where(User.id == user.id, User.locked_until == user.locked_until)
+                   .values(failed_logins=0, locked_until=None).execution_options(synchronize_session=False))
+        db.commit()
+
+    if user is None:
+        verify_password(req.password, None)  # same slow work as a real check, so timing does not reveal accounts
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
 
-    user.failed_logins = 0
-    user.locked_until = None
+    # Count the attempt in one atomic database step *before* the slow password check, so attempts sent at the
+    # same moment each get their own number and at most MAX_FAILED_LOGINS guesses are checked per lockout window.
+    attempt = db.execute(update(User).where(User.id == user.id)
+                         .values(failed_logins=User.failed_logins + 1).returning(User.failed_logins)).scalar_one()
+    db.commit()
+    if attempt > config.MAX_FAILED_LOGINS:
+        _lock_account(db, user.id, now)
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            detail="Too many failed attempts. Try again in a few minutes.")
+
+    if not verify_password(req.password, user.password_hash):
+        if attempt >= config.MAX_FAILED_LOGINS:
+            _lock_account(db, user.id, now)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
+
+    db.execute(update(User).where(User.id == user.id).values(failed_logins=0, locked_until=None))
+    db.commit()
+    db.refresh(user)
     if user.status == Status.PENDING:
         db.commit()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your account is waiting for administrator approval")
@@ -451,7 +478,7 @@ def start_analysis(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    original_name = Path(file.filename or "upload").name
+    original_name = analysis.safe_filename(file.filename or "upload")
     if Path(original_name).suffix.lower() not in config.ALLOWED_UPLOAD_TYPES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail=f"Upload a {', '.join(config.ALLOWED_UPLOAD_TYPES)} file")
@@ -462,9 +489,21 @@ def start_analysis(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The file is empty")
 
     plan = plan_run(db, user, model_choice)  # refuses with a clear reason (cap reached, no own key, ...)
-    upload = analysis.store_upload(db, user, original_name, content)
     course_name = (course or "").strip() or Path(original_name).stem
-    job_id = analysis.submit(user, upload, plan, course_name, (term or "").strip() or None)
+    term_name = (term or "").strip() or None
+    try:
+        job_id = analysis.reserve(user, plan, original_name, course_name, term_name)
+    except analysis.JobLimitError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc))
+    try:
+        upload = analysis.store_upload(db, user, original_name, content)
+    except analysis.StorageQuotaError as exc:
+        analysis.release(job_id)
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(exc))
+    except Exception:
+        analysis.release(job_id)
+        raise
+    analysis.submit(job_id, user, upload, plan, course_name, term_name)
     return {"job_id": job_id, "status": "queued"}
 
 
@@ -504,12 +543,50 @@ class ReportUpdate(BaseModel):
     report: dict
 
 
+# Limits for a report saved from the browser. Real reports are far smaller; these stop a stored report from
+# growing so large that opening or comparing it ties up the server.
+MAX_REPORT_BYTES = 5_000_000
+MAX_REPORT_CATEGORIES = 200
+MAX_REPORT_COMMENTS = 20_000
+MAX_REPORT_TABLES = 200
+
+
+def _check_report_shape(data: dict) -> None:
+    def bad(detail: str):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+
+    categories = data.get("categories")
+    if not isinstance(categories, list) or not all(isinstance(c, dict) for c in categories):
+        bad("This does not look like a course report")
+    if len(categories) > MAX_REPORT_CATEGORIES:
+        bad("This report has too many topics to save")
+    comments = 0
+    for category in categories:
+        topic = category.get("topic")
+        if topic is not None and not isinstance(topic, str):
+            bad("This does not look like a course report")
+        listed = category.get("comments", [])
+        if not isinstance(listed, list):
+            bad("This does not look like a course report")
+        comments += len(listed)
+    if comments > MAX_REPORT_COMMENTS:
+        bad("This report has too many comments to save")
+    tables = data.get("quantitative", [])
+    if tables is not None and (not isinstance(tables, list) or len(tables) > MAX_REPORT_TABLES):
+        bad("This report has too many rating tables to save")
+    try:
+        size = len(json.dumps(data, allow_nan=False).encode("utf-8"))  # also rejects NaN and Infinity
+    except ValueError:
+        bad("This report contains a number that is not valid")
+    if size > MAX_REPORT_BYTES:
+        bad("This report is too large to save")
+
+
 @app.put("/api/reports/{report_id}")
 def save_report(report_id: int, req: ReportUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Save a report the professor edited in the browser (for example ignored comments and recalculated scores)."""
     report = _own_report(db, user, report_id)
-    if not isinstance(req.report.get("categories"), list):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This does not look like a course report")
+    _check_report_shape(req.report)
     report.report_json = req.report
     score = req.report.get("overall_score")
     report.overall_score = float(score) if isinstance(score, (int, float)) else None
